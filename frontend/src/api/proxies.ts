@@ -65,3 +65,14 @@ export async function fetchStats(): Promise<StatsSummary> {
   const res = await client.get('/api/stats/summary')
   return res.data
 }
+
+export interface CheckAllResponse {
+  detail: string
+  task_id: string
+}
+
+export async function triggerCheckAll(): Promise<CheckAllResponse> {
+  const res = await client.post('/api/proxies/check-all')
+  return res.data
+}
+

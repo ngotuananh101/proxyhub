@@ -4,6 +4,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
   UploadIcon,
 } from 'lucide-react'
@@ -11,6 +12,7 @@ import {
   deleteManyProxies,
   deleteProxy,
   fetchProxies,
+  triggerCheckAll,
 } from '@/api/proxies'
 import { AddProxyDialog } from '@/components/proxies/AddProxyDialog'
 import { ImportDialog } from '@/components/proxies/ImportDialog'
@@ -49,7 +51,27 @@ export default function ProxiesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showImport, setShowImport] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [checking, setChecking] = useState(false)
   const queryClient = useQueryClient()
+
+  const handleCheckAll = async () => {
+    setChecking(true)
+    try {
+      await triggerCheckAll()
+      toast.add({
+        type: 'success',
+        title: 'Đã gửi yêu cầu kiểm tra sức khoẻ',
+        description: 'Kết quả sẽ cập nhật sau vài phút.',
+      })
+    } catch {
+      toast.add({
+        type: 'error',
+        title: 'Không thể gửi yêu cầu kiểm tra',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const { data, isPending } = useQuery({
     queryKey: ['proxies', page, statusFilter, search],
@@ -115,6 +137,10 @@ export default function ProxiesPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCheckAll} disabled={checking}>
+            <RefreshCwIcon data-icon="inline-start" />
+            Kiểm tra ngay
+          </Button>
           <Button onClick={() => setShowForm(true)}>
             <PlusIcon data-icon="inline-start" />
             Add Proxy
