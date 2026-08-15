@@ -1,6 +1,6 @@
 # 🔄 ProxyHub: Hệ thống Quản lý & Xoay Proxy Thông minh
 
-> ⚠️ **Trạng thái:** Dự án đang trong giai đoạn phát triển ban đầu (WIP) — hiện mới có tài liệu thiết kế, code sẽ được bổ sung dần theo [Roadmap](#-lộ-trình-phát-triển-roadmap).
+> ✅ **Trạng thái:** Phiên bản MVP đã hoàn thành — bao gồm đầy đủ Backend (FastAPI), Frontend Dashboard (React) và Proxy Gateway (`proxy.py`). Các tính năng tiếp theo đang được phát triển theo [Roadmap](#-lộ-trình-phát-triển-roadmap).
 
 ProxyHub là một ứng dụng full-stack mã nguồn mở giúp quản lý, kiểm tra sức khoẻ (health check) và tự động xoay (rotate) hàng loạt proxy. Hệ thống cung cấp một Dashboard trực quan để quản lý pool proxy và một API Gateway hiệu năng cao để forward traffic.
 
@@ -97,8 +97,6 @@ Trước khi bắt đầu, đảm bảo máy tính của bạn đã cài đặt:
 > ⚠️ **Lưu ý cho Windows:** Celery **không hỗ trợ chính thức trên Windows**. Khi chạy worker/beat trên Windows, cần dùng pool thay thế (`--pool=solo` hoặc `--pool=gevent`) — xem hướng dẫn ở bước chạy Celery bên dưới. Cách ổn định nhất là chạy qua **WSL2** hoặc **Docker**.
 
 ## 🚀 Cài đặt và Chạy thử (Development)
-
-> 🚧 Vì dự án đang ở giai đoạn WIP, một số file được tham chiếu dưới đây (`requirements.txt`, `.env.example`, `app/`, `frontend/`) sẽ xuất hiện dần trong repo. Nếu lệnh nào báo thiếu file, nghĩa là phần đó chưa được implement.
 
 ### 1. Clone repository
 
@@ -201,7 +199,7 @@ Gateway sử dụng một plugin custom để gọi API lấy proxy và forward 
 #### Chạy Gateway (Terminal 5)
 
 ```bash
-proxy --plugin-name app.gateway.RotateProxyPlugin \
+proxy --plugins app.gateway.plugin.RotateProxyPlugin \
     --hostname 127.0.0.1 \
     --port 8899
 ```
@@ -305,7 +303,7 @@ Plugin **`RotateProxyPlugin`** kế thừa từ **`HttpProxyBasePlugin`** của 
 
 ## 🗺️ Lộ trình phát triển (Roadmap)
 
-- [ ] MVP: CRUD Proxy, Manual Rotate, SQLite
+- [x] MVP: CRUD Proxy, Manual Rotate, SQLite
 - [ ] Celery Health Check tự động
 - [ ] Multi-tenant: Gán User/API Key vào Pool riêng biệt
 - [ ] Sticky Session: Giữ nguyên IP cho một `session_id` trong N phút
