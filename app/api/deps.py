@@ -1,6 +1,6 @@
 import hmac
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session
 
@@ -20,15 +20,15 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
         payload = decode_access_token(credentials.credentials)
+        user_id = int(payload.get("sub", 0))
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = int(payload.get("sub", 0))
     user = session.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
 
 
-def verify_internal_key(x_internal_key: str = "") -> None:
+def verify_internal_key(x_internal_key: str = Header(default="")) -> None:
     if not hmac.compare_digest(x_internal_key, settings.INTERNAL_API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal key")

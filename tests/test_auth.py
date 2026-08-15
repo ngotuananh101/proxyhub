@@ -1,8 +1,10 @@
 # tests/test_auth.py
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
+from app.api.deps import verify_internal_key
 from app.models.user import User
 from app.core.security import hash_password
 
@@ -44,10 +46,6 @@ def test_login_wrong_password(client, admin_user):
 def test_me_requires_auth(client):
     resp = client.get("/api/auth/me")
     assert resp.status_code == 401
-
-
-from fastapi import Header, HTTPException
-from app.api.deps import verify_internal_key
 
 
 def test_me_with_token(client, admin_user):
