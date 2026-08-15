@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     INTERNAL_API_KEY: str = "change_me"
     CORS_ORIGINS: str = "http://localhost:5173"
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    CELERY_BROKER_URL: str = "redis://127.0.0.1:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://127.0.0.1:6379/2"
     HEALTH_CHECK_URL: str = "https://api.ipify.org"
     HEALTH_CHECK_TIMEOUT: float = 10.0
 

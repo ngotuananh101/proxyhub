@@ -196,7 +196,7 @@ Truy cập Dashboard tại: **`http://localhost:5173`**
 
 Gateway sử dụng một plugin custom để gọi API lấy proxy và forward traffic.
 
-> 💡 **Chạy nhanh cả hệ thống:** thay vì mở từng terminal, chạy `start-dev.bat` ở thư mục gốc — script tự mở Backend, Frontend và Gateway (kèm biến môi trường) trong 3 cửa sổ riêng.
+> 💡 **Chạy nhanh cả hệ thống:** thay vì mở từng terminal, chạy `start-dev.bat` ở thư mục gốc — script dùng `npx concurrently` chạy Backend, Frontend, Gateway, Celery Worker và Celery Beat (kèm biến môi trường) trong **một cửa sổ duy nhất**, log được tô màu theo từng tiến trình. Bấm `Ctrl+C` để dừng tất cả.
 
 #### Chạy Gateway (Terminal 5)
 
@@ -223,7 +223,7 @@ File **`.env`** ở thư mục gốc gồm các biến sau:
 DATABASE_URL=sqlite:///./proxyhub.db
 
 # Redis (Cho Celery)
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=redis://127.0.0.1:6379/0
 
 # JWT Auth
 SECRET_KEY=your_super_secret_key_change_me
@@ -231,8 +231,8 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 # Celery
-CELERY_BROKER_URL=redis://localhost:6379/1
-CELERY_RESULT_BACKEND=redis://localhost:6379/2
+CELERY_BROKER_URL=redis://127.0.0.1:6379/1
+CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/2
 HEALTH_CHECK_URL=https://api.ipify.org
 HEALTH_CHECK_TIMEOUT=10
 
@@ -310,7 +310,7 @@ Plugin **`RotateProxyPlugin`** kế thừa từ **`HttpProxyBasePlugin`** của 
 | Vấn đề                                        | Nguyên nhân / Cách xử lý                                                                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Celery worker crash trên Windows              | Celery không hỗ trợ Windows với pool mặc định. Chạy thêm `--pool=solo` (hoặc `--pool=gevent`), tốt nhất dùng WSL2/Docker.    |
-| `ConnectionError: redis://localhost:6379`     | Redis chưa chạy. Khởi động Redis (`redis-server`) hoặc kiểm tra lại `REDIS_URL`.                                             |
+| `ConnectionError: redis://127.0.0.1:6379`     | Redis chưa chạy. Khởi động Redis (`redis-server`) hoặc kiểm tra lại `REDIS_URL`.                                             |
 | Port 8899/8000 đã được sử dụng                | Trùng port với ứng dụng khác. Đổi port bằng flag `--port` hoặc kiểm tra process đang chiếm port.                             |
 | `database is locked` (SQLite)                 | FastAPI và Celery worker ghi đồng thời. Đảm bảo đã bật **WAL mode** và set `busy_timeout` (mặc định trong cấu hình DB).      |
 | Gateway trả lỗi nhưng Dashboard vẫn hiện proxy alive | Health check chưa chạy kịp chu kỳ. Kiểm tra log Celery Beat/Worker, hoặc trigger health check thủ công từ Dashboard.  |

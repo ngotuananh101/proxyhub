@@ -28,8 +28,8 @@ def test_settings_cors_parsing():
 def test_settings_ignores_extra_env_vars(monkeypatch):
     # .env.example ships Part-2 vars (Redis/Celery) the MVP Settings doesn't
     # declare; they must not break startup.
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+    monkeypatch.setenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/1")
     monkeypatch.setenv("GATEWAY_API_URL", "http://localhost:8000/internal/proxies")
     s = Settings(
         _env_file=None,
@@ -50,8 +50,8 @@ def test_celery_and_health_check_defaults(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
     s = Settings(_env_file=None)
-    assert s.CELERY_BROKER_URL == "redis://localhost:6379/1"
-    assert s.CELERY_RESULT_BACKEND == "redis://localhost:6379/2"
+    assert s.CELERY_BROKER_URL == "redis://127.0.0.1:6379/1"
+    assert s.CELERY_RESULT_BACKEND == "redis://127.0.0.1:6379/2"
     assert s.HEALTH_CHECK_URL == "https://api.ipify.org"
     assert s.HEALTH_CHECK_TIMEOUT == 10.0
 
