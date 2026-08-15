@@ -27,3 +27,6 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# celerybeat
+celerybeat-*
