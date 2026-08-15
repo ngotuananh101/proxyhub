@@ -38,3 +38,20 @@ def test_settings_ignores_extra_env_vars(monkeypatch):
         INTERNAL_API_KEY="key",
     )
     assert s.DATABASE_URL == "sqlite:///./test.db"
+
+
+def test_celery_and_health_check_defaults(monkeypatch):
+    for key in (
+        "CELERY_BROKER_URL",
+        "CELERY_RESULT_BACKEND",
+        "HEALTH_CHECK_URL",
+        "HEALTH_CHECK_TIMEOUT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    s = Settings(_env_file=None)
+    assert s.CELERY_BROKER_URL == "redis://localhost:6379/1"
+    assert s.CELERY_RESULT_BACKEND == "redis://localhost:6379/2"
+    assert s.HEALTH_CHECK_URL == "https://api.ipify.org"
+    assert s.HEALTH_CHECK_TIMEOUT == 10.0
+
