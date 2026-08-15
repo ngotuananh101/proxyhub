@@ -1,0 +1,4 @@
+# Windows batch files must always use CRLF line endings — cmd.exe cannot
+# parse LF-only .bat files, so force CRLF on checkout regardless of platform.
+*.bat text eol=crlf
+*.cmd text eol=crlf
