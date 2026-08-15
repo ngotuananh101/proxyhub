@@ -42,13 +42,13 @@ flowchart LR
 
 ## 🛠️ Công nghệ sử dụng
 
-| Thành phần | Công nghệ | Mô tả |
-|---|---|---|
-| **Frontend** | React, Vite, TailwindCSS, ShadcnUI | Giao diện quản lý nhanh, hiện đại |
-| **Backend API** | FastAPI, SQLModel, Pydantic | REST API hiệu năng cao, tự sinh docs |
-| **Gateway** | proxy.py | Forward proxy server với custom plugin |
-| **Task Queue** | Celery, Redis | Chạy background job health check |
-| **Database** | SQLite (WAL mode) | Lưu trữ proxy, logs, users |
+| Thành phần      | Công nghệ                          | Mô tả                                  |
+| --------------- | ---------------------------------- | -------------------------------------- |
+| **Frontend**    | React, Vite, TailwindCSS, ShadcnUI | Giao diện quản lý nhanh, hiện đại      |
+| **Backend API** | FastAPI, SQLModel, Pydantic        | REST API hiệu năng cao, tự sinh docs   |
+| **Gateway**     | proxy.py                           | Forward proxy server với custom plugin |
+| **Task Queue**  | Celery, Redis                      | Chạy background job health check       |
+| **Database**    | SQLite (WAL mode)                  | Lưu trữ proxy, logs, users             |
 
 ## 📋 Yêu cầu hệ thống (Prerequisites)
 
@@ -63,7 +63,7 @@ Trước khi bắt đầu, đảm bảo máy tính của bạn đã cài đặt:
 ### 1. Clone repository
 
 ```bash
-git clone https://github.com/your-username/proxyhub.git
+git clone https://github.com/ngotuananh101/proxyhub.git
 cd proxyhub
 ```
 
