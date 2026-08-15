@@ -5,6 +5,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.ruff_cache/
 
 # Environment
 .env
@@ -25,3 +27,8 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI
+.agents/
+.remember/
+.superpowers/
