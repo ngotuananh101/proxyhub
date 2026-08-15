@@ -67,7 +67,7 @@ function ProfileForm() {
       </CardHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
         <CardContent>
-          <FieldGroup>
+          <FieldGroup className='gap-4'>
             <Field data-invalid={!!error}>
               <FieldLabel htmlFor="profile-username">Username</FieldLabel>
               <Input
@@ -143,7 +143,7 @@ function PasswordForm() {
       </CardHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
         <CardContent>
-          <FieldGroup>
+          <FieldGroup className='gap-4'>
             <Field>
               <FieldLabel htmlFor="current-password">Mật khẩu hiện tại</FieldLabel>
               <Input
