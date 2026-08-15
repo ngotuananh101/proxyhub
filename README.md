@@ -233,6 +233,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 # Celery
 CELERY_BROKER_URL=redis://localhost:6379/1
 CELERY_RESULT_BACKEND=redis://localhost:6379/2
+HEALTH_CHECK_URL=https://api.ipify.org
+HEALTH_CHECK_TIMEOUT=10
 
 # Gateway
 GATEWAY_API_URL=http://localhost:8000/internal/proxies
@@ -277,11 +279,13 @@ Kết quả trả về sẽ là IP của proxy trong pool và IP này sẽ thay 
 
 ### 3. Health Check
 
-Vào **`Settings`** → cấu hình URL kiểm tra và khoảng thời gian (ví dụ: 5 phút).
+Celery worker sẽ tự động kiểm tra định kỳ (mặc định mỗi 5 phút do Celery Beat kích hoạt) toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
 
-> `httpbin.org` đôi khi chậm/không ổn định. Có thể dùng endpoint thay thế nhẹ hơn như `http://api.ipify.org` hoặc một URL tĩnh do bạn tự host.
+Gateway chỉ lựa chọn các proxy đang có trạng thái `alive` để forward traffic.
 
-Celery worker sẽ tự động test và đánh dấu proxy **`alive`** hoặc **`dead`**. Gateway chỉ chọn proxy **`alive`**.
+Ngoài chu kỳ tự động, bạn có thể kích hoạt kiểm tra thủ công bất cứ lúc nào:
+- Bấm nút **"Kiểm tra ngay"** trên React Dashboard (trang Danh sách Proxy).
+- Hoặc gọi API: `POST /api/proxies/check-all`.
 
 ## 🧠 Logic xoay Proxy (Gateway Plugin)
 
@@ -314,7 +318,7 @@ Plugin **`RotateProxyPlugin`** kế thừa từ **`HttpProxyBasePlugin`** của 
 ## 🗺️ Lộ trình phát triển (Roadmap)
 
 - [x] MVP: CRUD Proxy, Manual Rotate, SQLite
-- [ ] Celery Health Check tự động
+- [x] Celery Health Check tự động
 - [ ] Multi-tenant: Gán User/API Key vào Pool riêng biệt
 - [ ] Sticky Session: Giữ nguyên IP cho một `session_id` trong N phút
 - [ ] WebSocket Realtime Logs: Xem log request chạy trên Dashboard

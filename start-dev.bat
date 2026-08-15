@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================
-echo   ProxyHub - Khoi dong Backend + Frontend + Gateway
+echo   ProxyHub - Khoi dong Backend + Frontend + Gateway + Celery
 echo ============================================
 
 REM --- Kiem tra .env ---
@@ -58,10 +58,17 @@ REM Dung "python -m proxy" thay vi proxy.exe: console script khong them cwd vao
 REM sys.path nen khong import duoc app.gateway.plugin tu thu muc project.
 start "ProxyHub Gateway" cmd /k "venv\Scripts\python.exe -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.0.1 --port 8899"
 
+REM --- 4. Celery Worker: health check tasks (Windows can --pool=solo) ---
+start "ProxyHub Celery Worker" cmd /k "venv\Scripts\celery.exe -A app.worker.celery_app worker --loglevel=info --pool=solo"
+
+REM --- 5. Celery Beat: scheduler 5 phut/lan ---
+start "ProxyHub Celery Beat" cmd /k "venv\Scripts\celery.exe -A app.worker.celery_app beat --loglevel=info"
+
 echo ============================================
 echo   Backend : http://localhost:8000  (API docs: /docs)
 echo   Frontend: http://localhost:5173
 echo   Gateway : 127.0.0.1:8899  (curl -x http://127.0.0.1:8899 http://httpbin.org/ip)
+echo   Celery  : worker + beat (health check moi 5 phut)
 echo ============================================
 echo Tat cua so nay khong anh huong cac tien trinh da khoi dong.
 timeout /t 5 >nul
