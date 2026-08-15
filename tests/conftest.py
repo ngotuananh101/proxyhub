@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -19,6 +20,7 @@ def engine_fixture():
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
     yield engine
