@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import create_db_and_tables
 from app.api.auth import router as auth_router
+from app.api.proxies import router as proxies_router
 
 
 def create_app(db_engine=None):
@@ -26,6 +27,7 @@ def create_app(db_engine=None):
     )
 
     app.include_router(auth_router)
+    app.include_router(proxies_router)
 
     if db_engine is not None:
         # Override get_session dependency for testing
