@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { ThemeToggle } from './ThemeToggle'
 
 export function AppHeader() {
   const navigate = useNavigate()
@@ -34,6 +35,7 @@ export function AppHeader() {
       <Separator orientation="vertical" className="h-5" />
       {/* Left side intentionally blank — reserved for breadcrumbs/search */}
       <div className="flex-1" />
+      <ThemeToggle />
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
