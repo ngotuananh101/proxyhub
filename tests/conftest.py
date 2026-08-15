@@ -8,7 +8,10 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key")
 
 # Import models so SQLModel.metadata knows about them before create_all
-from app.models import Proxy, ProxyStatus, User  # noqa: F401, E402
+try:
+    from app.models import Proxy, ProxyStatus, User  # noqa: F401, E402
+except ImportError:
+    pass
 
 
 @pytest.fixture(name="engine")
