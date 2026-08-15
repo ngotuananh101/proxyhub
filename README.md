@@ -196,13 +196,23 @@ Truy cập Dashboard tại: **`http://localhost:5173`**
 
 Gateway sử dụng một plugin custom để gọi API lấy proxy và forward traffic.
 
+> 💡 **Chạy nhanh cả hệ thống:** thay vì mở từng terminal, chạy `start-dev.bat` ở thư mục gốc — script tự mở Backend, Frontend và Gateway (kèm biến môi trường) trong 3 cửa sổ riêng.
+
 #### Chạy Gateway (Terminal 5)
 
+Plugin đọc `GATEWAY_API_URL` và `INTERNAL_API_KEY` trực tiếp từ biến môi trường (không đọc file `.env`), nên phải truyền kèm khi chạy. `INTERNAL_API_KEY` phải **trùng** giá trị trong `.env` của Backend.
+
+**Git Bash / Linux / macOS:**
+
 ```bash
-proxy --plugins app.gateway.plugin.RotateProxyPlugin \
+GATEWAY_API_URL=http://localhost:8000/internal/proxies \
+INTERNAL_API_KEY=<key-trong-.env> \
+python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin \
     --hostname 127.0.0.1 \
     --port 8899
 ```
+
+> ⚠️ Dùng `python -m proxy` (trong venv) thay vì lệnh `proxy`: console script `proxy.exe` không thêm thư mục hiện tại vào `sys.path` nên sẽ báo lỗi `... is not resolvable as a plugin class`.
 
 ## ⚙️ Cấu hình (Environment Variables)
 

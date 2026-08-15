@@ -54,7 +54,9 @@ REM --- 2. Frontend: Vite dev server tai :5173 ---
 start "ProxyHub Frontend" cmd /k "cd frontend && npm run dev"
 
 REM --- 3. Gateway: proxy.py tai :8899 (env da ke thua tu script nay) ---
-start "ProxyHub Gateway" cmd /k "venv\Scripts\proxy.exe --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.0.1 --port 8899"
+REM Dung "python -m proxy" thay vi proxy.exe: console script khong them cwd vao
+REM sys.path nen khong import duoc app.gateway.plugin tu thu muc project.
+start "ProxyHub Gateway" cmd /k "venv\Scripts\python.exe -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.0.1 --port 8899"
 
 echo ============================================
 echo   Backend : http://localhost:8000  (API docs: /docs)
