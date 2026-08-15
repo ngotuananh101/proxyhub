@@ -380,7 +380,17 @@ class TestBeatSchedule:
         assert entry["schedule"] == 300.0
 ```
 
-**Quan trọng — DB trong test:** các task trong `app/worker.py` dùng `engine` import từ `app.core.database`. Fixture `engine` của conftest tạo engine in-memory riêng. Để test chạy đúng engine fixture, task phải lấy engine qua một hàm có thể patch, hoặc worker phải dùng `Session(engine)` với engine import từ `app.core.database` và test patch `app.worker.engine`. Cách đơn giản nhất: trong `app/worker.py` viết `from app.core import database` rồi dùng `database.engine` — trong test, monkeypatch `app.worker.database.engine = engine_fixture` KHÔNG hoạt động vì `database` là module thật. Vì vậy dùng pattern: khai báo hàm helper `_get_engine()` trong worker trả về `database.engine`, và test patch `app.worker._get_engine` trả về fixture engine. Chi tiết ở Step 3.
+**Quan trọng — DB trong test:** các task trong `app/worker.py` dùng engine qua hàm `_get_engine()` (indirection để patch được). Fixture autouse đặt TRONG `tests/test_worker.py` (không đặt trong conftest để tránh ảnh hưởng test khác), import `app.worker` trước khi patch:
+
+```python
+@pytest.fixture(autouse=True)
+def _worker_engine(engine, monkeypatch):
+    import app.worker
+
+    monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
+```
+
+(Import trong fixture chạy trước test body nên patch luôn có hiệu lực; không cần check `sys.modules`.)
 
 - [ ] **Step 2: Chạy test để chắc chắn FAIL**
 
@@ -457,21 +467,19 @@ def check_proxy_task(proxy_id: int) -> str:
         return "alive" if result.alive else "dead"
 ```
 
-Thêm vào cuối `tests/conftest.py` fixture autouse để mọi test trong `app.worker` dùng engine in-memory:
+Thêm vào đầu `tests/test_worker.py` (sau các import) fixture autouse để mọi test trong file dùng engine in-memory:
 
 ```python
+import pytest
+
+
 @pytest.fixture(autouse=True)
-def _patch_worker_engine(engine, monkeypatch):
-    """Nếu app.worker đã được import, trỏ engine của nó về DB test."""
-    import sys
+def _worker_engine(engine, monkeypatch):
+    """Trỏ engine của app.worker về DB test in-memory."""
+    import app.worker
 
-    if "app.worker" in sys.modules:
-        import app.worker
-
-        monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
+    monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
 ```
-
-Lưu ý: fixture này phụ thuộc fixture `engine` nên mọi test đều tạo engine in-memory — điều này đã đúng với mọi test hiện có (chúng đều dùng `engine` hoặc `session`).
 
 - [ ] **Step 4: Chạy test để chắc chắn PASS**
 
@@ -486,7 +494,7 @@ Expected: tất cả PASS (59 cũ + test mới).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/worker.py tests/test_worker.py tests/conftest.py
+git add app/worker.py tests/test_worker.py
 git commit -m "feat: add Celery worker with health check tasks and beat schedule"
 ```
 
