@@ -1,9 +1,7 @@
 # tests/test_gateway_plugin.py
-import json
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import MagicMock, patch
 
-from app.gateway.plugin import RotateProxyPlugin, fetch_proxy_from_api
+from app.gateway.plugin import fetch_proxy_from_api
 
 
 class TestFetchProxyFromApi:

@@ -1,7 +1,7 @@
 import random
 from urllib.parse import urlparse
 
-from sqlmodel import Session, select, col
+from sqlmodel import Session, col, select
 
 from app.models.proxy import Proxy, ProxyStatus
 from app.schemas.proxy import ImportResult, InvalidLine

@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlmodel import SQLModel, Field, UniqueConstraint
+from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
 class ProxyStatus(str, enum.Enum):

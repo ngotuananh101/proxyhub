@@ -1,8 +1,6 @@
-import pytest
-from sqlmodel import Session
 
 from app.models.proxy import Proxy, ProxyStatus
-from app.services.proxy_service import parse_proxy_line, import_proxies, select_random_proxy
+from app.services.proxy_service import import_proxies, parse_proxy_line, select_random_proxy
 
 
 class TestParseProxyLine:

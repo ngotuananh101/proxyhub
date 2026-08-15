@@ -1,13 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import Session, select, func, col
+from sqlmodel import Session, col, func, select
 
-from app.core.database import get_session
 from app.api.deps import get_current_user
+from app.core.database import get_session
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.user import User
 from app.schemas.proxy import (
-    ProxyCreate, ProxyUpdate, ProxyResponse, ProxyListResponse,
-    ImportRequest, ImportResult, DeleteManyRequest,
+    DeleteManyRequest,
+    ImportRequest,
+    ImportResult,
+    ProxyCreate,
+    ProxyListResponse,
+    ProxyResponse,
+    ProxyUpdate,
 )
 from app.services.proxy_service import import_proxies
 
@@ -56,15 +61,15 @@ def create_proxy(
 def list_proxies(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
-    status_filter: str | None = Query(None, alias="status"),
+    status: ProxyStatus | None = Query(None),
     scheme: str | None = None,
     q: str | None = None,
     session: Session = Depends(get_session),
     _: User = Depends(get_current_user),
 ):
     query = select(Proxy)
-    if status_filter:
-        query = query.where(Proxy.status == ProxyStatus(status_filter))
+    if status:
+        query = query.where(Proxy.status == status)
     if scheme:
         query = query.where(Proxy.scheme == scheme)
     if q:

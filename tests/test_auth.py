@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.api.deps import verify_internal_key
-from app.models.user import User
 from app.core.security import hash_password
+from app.models.user import User
 
 
 @pytest.fixture(name="client")

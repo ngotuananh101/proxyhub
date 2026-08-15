@@ -2,10 +2,11 @@
 import argparse
 import sys
 
+from sqlmodel import Session, select
+
 from app.core.database import create_db_and_tables, engine
 from app.core.security import hash_password
 from app.models.user import User
-from sqlmodel import Session, select
 
 
 def create_admin(args):

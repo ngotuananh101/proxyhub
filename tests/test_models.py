@@ -1,6 +1,5 @@
-from sqlmodel import Session, select
-from app.models.user import User
 from app.models.proxy import Proxy, ProxyStatus
+from app.models.user import User
 
 
 def test_create_user(session):

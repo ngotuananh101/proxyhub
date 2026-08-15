@@ -5,14 +5,13 @@ import os
 from typing import Any, Dict, List, Optional
 
 import httpx
-
-from proxy.http import Url, httpHeaders, httpMethods
-from proxy.core.base import TcpUpstreamConnectionHandler
-from proxy.http.proxy import HttpProxyBasePlugin
-from proxy.http.parser import HttpParser
-from proxy.http.exception import HttpProtocolException
-from proxy.common.utils import text_, bytes_
 from proxy.common.constants import COLON
+from proxy.common.utils import bytes_, text_
+from proxy.core.base import TcpUpstreamConnectionHandler
+from proxy.http import Url, httpHeaders
+from proxy.http.exception import HttpProtocolException
+from proxy.http.parser import HttpParser
+from proxy.http.proxy import HttpProxyBasePlugin
 
 logger = logging.getLogger(__name__)
 

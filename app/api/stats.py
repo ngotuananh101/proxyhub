@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
-from sqlmodel import Session, select, func
+from sqlmodel import Session, func, select
 
-from app.core.database import get_session
 from app.api.deps import get_current_user
+from app.core.database import get_session
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.user import User
 

@@ -1,12 +1,12 @@
 import hmac
 
-from fastapi import Depends, HTTPException, Header, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.core.database import get_session
 from app.core.security import decode_access_token
-from app.core.config import settings
 from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)

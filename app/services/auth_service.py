@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
+from app.core.security import create_access_token, verify_password
 from app.models.user import User
-from app.core.security import verify_password, create_access_token
 
 
 def authenticate_user(session: Session, username: str, password: str) -> User | None:

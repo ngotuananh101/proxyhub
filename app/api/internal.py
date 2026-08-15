@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-
 from sqlmodel import Session
 
-from app.core.database import get_session
 from app.api.deps import verify_internal_key
+from app.core.database import get_session
 from app.schemas.proxy import InternalProxyResponse
 from app.services.proxy_service import select_random_proxy
 

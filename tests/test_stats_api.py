@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.models.user import User
-from app.models.proxy import Proxy, ProxyStatus
 from app.core.security import hash_password
+from app.models.proxy import Proxy, ProxyStatus
+from app.models.user import User
 
 
 @pytest.fixture(name="client")
