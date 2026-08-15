@@ -53,6 +53,35 @@ class TestCheckAllProxies:
 
         assert check_all_proxies() == 0
 
+    def test_skips_dead_proxies(self, engine):
+        from app.services.health_service import CheckResult
+        from app.worker import check_all_proxies
+
+        ids = _seed(
+            engine,
+            [
+                Proxy(scheme="http", host="1.1.1.1", port=80),
+                Proxy(
+                    scheme="http",
+                    host="2.2.2.2",
+                    port=80,
+                    status=ProxyStatus.DEAD,
+                ),
+            ],
+        )
+        with patch(
+            "app.worker.health_service.check_proxy",
+            new=AsyncMock(return_value=CheckResult(alive=True, latency_ms=10.0)),
+        ) as mock_check:
+            count = check_all_proxies()
+
+        assert count == 1  # proxy dead bị bỏ qua
+        assert mock_check.call_count == 1
+        with Session(engine) as session:
+            dead = session.get(Proxy, ids[1])
+            assert dead.status == ProxyStatus.DEAD  # không bị đụng tới
+            assert dead.last_checked_at is None
+
     def test_marks_alive_and_dead(self, engine):
         from app.services.health_service import CheckResult
         from app.worker import check_all_proxies

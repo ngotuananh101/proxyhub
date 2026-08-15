@@ -284,7 +284,7 @@ Kết quả trả về sẽ là IP của proxy trong pool và IP này sẽ thay 
 
 ### 3. Health Check
 
-Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Toàn bộ proxy được kiểm tra **song song** trong một task duy nhất — số proxy chạy đồng thời giới hạn bởi `HEALTH_CHECK_CONCURRENCY` (mặc định 50), mỗi lần check timeout sau `HEALTH_CHECK_TIMEOUT` giây (mặc định 6). Nhờ đó một chu kỳ với vài trăm proxy chỉ mất vài chục giây. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
+Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Toàn bộ proxy được kiểm tra **song song** trong một task duy nhất — số proxy chạy đồng thời giới hạn bởi `HEALTH_CHECK_CONCURRENCY` (mặc định 50), mỗi lần check timeout sau `HEALTH_CHECK_TIMEOUT` giây (mặc định 6). Nhờ đó một chu kỳ với vài trăm proxy chỉ mất vài chục giây. Chỉ các proxy ở trạng thái `alive` hoặc `unknown` được kiểm tra — proxy đã `dead` bị bỏ qua để tiết kiệm thời gian (muốn kiểm tra lại chúng, xoá và import lại proxy đó). Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
 
 Gateway chỉ lựa chọn các proxy đang có trạng thái `alive` để forward traffic.
 

@@ -26,6 +26,7 @@ celery_app.conf.beat_schedule = {
 }
 
 CHECKABLE_SCHEMES = ("http", "https")
+CHECKABLE_STATUSES = (ProxyStatus.ALIVE, ProxyStatus.UNKNOWN)
 
 
 def _get_engine():
@@ -49,7 +50,10 @@ def check_all_proxies() -> int:
     """Kiểm tra sức khoẻ toàn bộ proxy http/https trong một task duy nhất."""
     with Session(_get_engine()) as session:
         proxies = session.exec(
-            select(Proxy).where(col(Proxy.scheme).in_(CHECKABLE_SCHEMES))
+            select(Proxy).where(
+                col(Proxy.scheme).in_(CHECKABLE_SCHEMES),
+                col(Proxy.status).in_(CHECKABLE_STATUSES),
+            )
         ).all()
         if not proxies:
             logger.info("No checkable proxies found")
