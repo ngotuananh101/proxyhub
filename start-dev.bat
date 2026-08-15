@@ -62,7 +62,7 @@ npx concurrently -c "blue,green,magenta,cyan,yellow" -n "Backend,Frontend,Gatewa
   "venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8000" ^
   "cd frontend && npm run dev" ^
   "venv\Scripts\python.exe -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.0.1 --port 8899" ^
-  "venv\Scripts\celery.exe -A app.worker.celery_app worker --loglevel=info --pool=solo" ^
+  "venv\Scripts\celery.exe -A app.worker.celery_app worker --loglevel=info --pool=threads --concurrency=8" ^
   "venv\Scripts\celery.exe -A app.worker.celery_app beat --loglevel=info"
 
 endlocal

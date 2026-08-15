@@ -160,7 +160,7 @@ celery -A app.worker.celery_app worker --loglevel=info
 **Windows** (Celery không hỗ trợ chính thức, cần chỉ định pool):
 
 ```bash
-celery -A app.worker.celery_app worker --loglevel=info --pool=solo
+celery -A app.worker.celery_app worker --loglevel=info --pool=threads --concurrency=8
 ```
 
 #### Chạy Celery Beat Scheduler (Terminal 3)
@@ -234,9 +234,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 CELERY_BROKER_URL=redis://127.0.0.1:6379/1
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/2
 HEALTH_CHECK_URL=https://api.ipify.org
-HEALTH_CHECK_TIMEOUT=10
+# Timeout mỗi lần check (giây)
+HEALTH_CHECK_TIMEOUT=6
 # Chu kỳ health check tự động (giây), mặc định 300 = 5 phút
 HEALTH_CHECK_INTERVAL=300
+# Số proxy được check song song cùng lúc
+HEALTH_CHECK_CONCURRENCY=50
 
 # Gateway
 GATEWAY_API_URL=http://localhost:8000/internal/proxies
@@ -281,7 +284,7 @@ Kết quả trả về sẽ là IP của proxy trong pool và IP này sẽ thay 
 
 ### 3. Health Check
 
-Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
+Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Toàn bộ proxy được kiểm tra **song song** trong một task duy nhất — số proxy chạy đồng thời giới hạn bởi `HEALTH_CHECK_CONCURRENCY` (mặc định 50), mỗi lần check timeout sau `HEALTH_CHECK_TIMEOUT` giây (mặc định 6). Nhờ đó một chu kỳ với vài trăm proxy chỉ mất vài chục giây. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
 
 Gateway chỉ lựa chọn các proxy đang có trạng thái `alive` để forward traffic.
 
@@ -311,7 +314,7 @@ Plugin **`RotateProxyPlugin`** kế thừa từ **`HttpProxyBasePlugin`** của 
 
 | Vấn đề                                        | Nguyên nhân / Cách xử lý                                                                                                     |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Celery worker crash trên Windows              | Celery không hỗ trợ Windows với pool mặc định. Chạy thêm `--pool=solo` (hoặc `--pool=gevent`), tốt nhất dùng WSL2/Docker.    |
+| Celery worker crash trên Windows              | Celery không hỗ trợ Windows với pool mặc định. Chạy thêm `--pool=threads --concurrency=8` (hoặc `--pool=solo`), tốt nhất dùng WSL2/Docker. |
 | `ConnectionError: redis://127.0.0.1:6379`     | Redis chưa chạy. Khởi động Redis (`redis-server`) hoặc kiểm tra lại `REDIS_URL`.                                             |
 | Port 8899/8000 đã được sử dụng                | Trùng port với ứng dụng khác. Đổi port bằng flag `--port` hoặc kiểm tra process đang chiếm port.                             |
 | `database is locked` (SQLite)                 | FastAPI và Celery worker ghi đồng thời. Đảm bảo đã bật **WAL mode** và set `busy_timeout` (mặc định trong cấu hình DB).      |

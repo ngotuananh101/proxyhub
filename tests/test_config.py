@@ -47,6 +47,7 @@ def test_celery_and_health_check_defaults(monkeypatch):
         "HEALTH_CHECK_URL",
         "HEALTH_CHECK_TIMEOUT",
         "HEALTH_CHECK_INTERVAL",
+        "HEALTH_CHECK_CONCURRENCY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -54,6 +55,7 @@ def test_celery_and_health_check_defaults(monkeypatch):
     assert s.CELERY_BROKER_URL == "redis://127.0.0.1:6379/1"
     assert s.CELERY_RESULT_BACKEND == "redis://127.0.0.1:6379/2"
     assert s.HEALTH_CHECK_URL == "https://api.ipify.org"
-    assert s.HEALTH_CHECK_TIMEOUT == 10.0
+    assert s.HEALTH_CHECK_TIMEOUT == 6.0
     assert s.HEALTH_CHECK_INTERVAL == 300.0
+    assert s.HEALTH_CHECK_CONCURRENCY == 50
 

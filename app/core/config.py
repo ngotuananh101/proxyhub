@@ -11,8 +11,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://127.0.0.1:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://127.0.0.1:6379/2"
     HEALTH_CHECK_URL: str = "https://api.ipify.org"
-    HEALTH_CHECK_TIMEOUT: float = 10.0
+    HEALTH_CHECK_TIMEOUT: float = 6.0
     HEALTH_CHECK_INTERVAL: float = 300.0
+    HEALTH_CHECK_CONCURRENCY: int = 50
 
     @property
     def cors_origins_list(self) -> list[str]:

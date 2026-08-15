@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -32,32 +33,39 @@ def _get_engine():
     return database.engine
 
 
+async def _check_all(proxies: list[Proxy]) -> list[health_service.CheckResult]:
+    """Check song song toàn bộ proxy, giới hạn bởi HEALTH_CHECK_CONCURRENCY."""
+    semaphore = asyncio.Semaphore(settings.HEALTH_CHECK_CONCURRENCY)
+
+    async def _bounded(proxy: Proxy) -> health_service.CheckResult:
+        async with semaphore:
+            return await health_service.check_proxy(proxy)
+
+    return list(await asyncio.gather(*(_bounded(p) for p in proxies)))
+
+
 @celery_app.task(name="app.worker.check_all_proxies")
 def check_all_proxies() -> int:
+    """Kiểm tra sức khoẻ toàn bộ proxy http/https trong một task duy nhất."""
     with Session(_get_engine()) as session:
         proxies = session.exec(
             select(Proxy).where(col(Proxy.scheme).in_(CHECKABLE_SCHEMES))
         ).all()
-        proxy_ids = [p.id for p in proxies]
-    for proxy_id in proxy_ids:
-        check_proxy_task.delay(proxy_id)
-    logger.info("Dispatched %d health check tasks", len(proxy_ids))
-    return len(proxy_ids)
+        if not proxies:
+            logger.info("No checkable proxies found")
+            return 0
 
+        results = asyncio.run(_check_all(proxies))
 
-@celery_app.task(name="app.worker.check_proxy_task")
-def check_proxy_task(proxy_id: int) -> str:
-    with Session(_get_engine()) as session:
-        proxy = session.get(Proxy, proxy_id)
-        if proxy is None:
-            logger.warning("Proxy %s not found, skipping", proxy_id)
-            return "not_found"
-
-        result = health_service.check_proxy(proxy)
-        proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
-        proxy.latency_ms = result.latency_ms
-        proxy.last_checked_at = datetime.now(timezone.utc)
-        proxy.updated_at = datetime.now(timezone.utc)
-        session.add(proxy)
+        now = datetime.now(timezone.utc)
+        for proxy, result in zip(proxies, results):
+            proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
+            proxy.latency_ms = result.latency_ms
+            proxy.last_checked_at = now
+            proxy.updated_at = now
+            session.add(proxy)
         session.commit()
-        return "alive" if result.alive else "dead"
+
+    alive = sum(1 for r in results if r.alive)
+    logger.info("Checked %d proxies: %d alive, %d dead", len(results), alive, len(results) - alive)
+    return len(results)

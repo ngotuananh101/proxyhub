@@ -31,3 +31,8 @@ def engine_fixture():
 def session_fixture(engine):
     with Session(engine) as session:
         yield session
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"

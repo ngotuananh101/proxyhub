@@ -19,14 +19,14 @@ def build_proxy_url(proxy: Proxy) -> str:
     return f"{proxy.scheme}://{proxy.host}:{proxy.port}"
 
 
-def check_proxy(proxy: Proxy) -> CheckResult:
+async def check_proxy(proxy: Proxy) -> CheckResult:
     """GET HEALTH_CHECK_URL qua proxy. Có response HTTP -> alive; lỗi/timeout -> dead."""
     start = time.perf_counter()
     try:
-        with httpx.Client(
+        async with httpx.AsyncClient(
             proxy=build_proxy_url(proxy), timeout=settings.HEALTH_CHECK_TIMEOUT
         ) as client:
-            client.get(settings.HEALTH_CHECK_URL)
+            await client.get(settings.HEALTH_CHECK_URL)
         latency_ms = (time.perf_counter() - start) * 1000
         return CheckResult(alive=True, latency_ms=round(latency_ms, 2))
     except Exception:
