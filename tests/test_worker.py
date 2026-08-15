@@ -98,8 +98,9 @@ class TestCheckProxyTask:
 
 class TestBeatSchedule:
     def test_schedule_configured(self):
+        from app.core.config import settings
         from app.worker import celery_app
 
-        entry = celery_app.conf.beat_schedule["check-all-proxies-every-5-min"]
+        entry = celery_app.conf.beat_schedule["check-all-proxies"]
         assert entry["task"] == "app.worker.check_all_proxies"
-        assert entry["schedule"] == 300.0
+        assert entry["schedule"] == settings.HEALTH_CHECK_INTERVAL

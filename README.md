@@ -235,6 +235,8 @@ CELERY_BROKER_URL=redis://127.0.0.1:6379/1
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/2
 HEALTH_CHECK_URL=https://api.ipify.org
 HEALTH_CHECK_TIMEOUT=10
+# Chu kỳ health check tự động (giây), mặc định 300 = 5 phút
+HEALTH_CHECK_INTERVAL=300
 
 # Gateway
 GATEWAY_API_URL=http://localhost:8000/internal/proxies
@@ -279,7 +281,7 @@ Kết quả trả về sẽ là IP của proxy trong pool và IP này sẽ thay 
 
 ### 3. Health Check
 
-Celery worker sẽ tự động kiểm tra định kỳ (mặc định mỗi 5 phút do Celery Beat kích hoạt) toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
+Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
 
 Gateway chỉ lựa chọn các proxy đang có trạng thái `alive` để forward traffic.
 

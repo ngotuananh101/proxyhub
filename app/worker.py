@@ -18,9 +18,9 @@ celery_app = Celery(
 )
 
 celery_app.conf.beat_schedule = {
-    "check-all-proxies-every-5-min": {
+    "check-all-proxies": {
         "task": "app.worker.check_all_proxies",
-        "schedule": 300.0,
+        "schedule": settings.HEALTH_CHECK_INTERVAL,
     }
 }
 
