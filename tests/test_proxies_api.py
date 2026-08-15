@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
@@ -91,4 +93,21 @@ def test_delete_proxy(client, auth_headers):
 
 def test_proxies_require_auth(client):
     resp = client.get("/api/proxies")
+    assert resp.status_code == 401
+
+
+def test_check_all_dispatches_task(client, auth_headers):
+    mock_async_result = MagicMock()
+    mock_async_result.id = "fake-task-id"
+    with patch("app.api.proxies.check_all_proxies.delay", return_value=mock_async_result) as mock_delay:
+        resp = client.post("/api/proxies/check-all", headers=auth_headers)
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["detail"] == "Health check started"
+    assert data["task_id"] == "fake-task-id"
+    mock_delay.assert_called_once()
+
+
+def test_check_all_requires_auth(client):
+    resp = client.post("/api/proxies/check-all")
     assert resp.status_code == 401

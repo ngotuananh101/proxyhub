@@ -15,6 +15,7 @@ from app.schemas.proxy import (
     ProxyUpdate,
 )
 from app.services.proxy_service import import_proxies
+from app.worker import check_all_proxies
 
 router = APIRouter(prefix="/api/proxies", tags=["proxies"])
 
@@ -93,6 +94,12 @@ def import_proxies_endpoint(
     _: User = Depends(get_current_user),
 ):
     return import_proxies(session, body.text)
+
+
+@router.post("/check-all", status_code=status.HTTP_202_ACCEPTED)
+def trigger_check_all(_: User = Depends(get_current_user)):
+    result = check_all_proxies.delay()
+    return {"detail": "Health check started", "task_id": result.id}
 
 
 @router.get("/{proxy_id}", response_model=ProxyResponse)
