@@ -2,7 +2,7 @@
 """Integration test: full flow from API to internal proxy selection."""
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.security import hash_password
 from app.models.proxy import Proxy, ProxyStatus
@@ -44,6 +44,13 @@ def test_full_flow(client, auth_headers, engine):
     resp = client.get("/api/stats/summary", headers=auth_headers)
     assert resp.json()["total"] == 2
     assert resp.json()["unknown"] == 2
+
+    # Mark proxy alive (mimicking health check before gateway selection)
+    with Session(engine) as session:
+        for p in session.exec(select(Proxy)).all():
+            p.status = ProxyStatus.ALIVE
+            session.add(p)
+        session.commit()
 
     # Internal API picks one
     resp = client.get("/internal/proxies?strategy=random", headers=INTERNAL_HEADERS)

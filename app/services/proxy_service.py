@@ -67,7 +67,7 @@ def import_proxies(session: Session, text: str) -> ImportResult:
 def select_random_proxy(session: Session) -> Proxy | None:
     proxies = session.exec(
         select(Proxy).where(
-            Proxy.status != ProxyStatus.DEAD,
+            Proxy.status == ProxyStatus.ALIVE,
             col(Proxy.scheme).in_(GATEWAY_SCHEMES),
         )
     ).all()

@@ -77,11 +77,11 @@ class TestSelectRandomProxy:
         assert proxy is not None
         assert proxy.host == "2.2.2.2"
 
-    def test_select_includes_unknown(self, session):
+    def test_select_excludes_unknown(self, session):
         session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.UNKNOWN))
         session.commit()
         proxy = select_random_proxy(session)
-        assert proxy is not None
+        assert proxy is None
 
     def test_select_excludes_socks5(self, session):
         session.add(Proxy(scheme="socks5", host="1.1.1.1", port=1080, status=ProxyStatus.ALIVE))
