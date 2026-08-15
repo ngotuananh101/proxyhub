@@ -65,7 +65,7 @@ function ProfileForm() {
           Cập nhật username và email của bạn.
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
         <CardContent>
           <FieldGroup>
             <Field data-invalid={!!error}>
@@ -141,7 +141,7 @@ function PasswordForm() {
           Mật khẩu mới phải có ít nhất 8 ký tự.
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
         <CardContent>
           <FieldGroup>
             <Field>
