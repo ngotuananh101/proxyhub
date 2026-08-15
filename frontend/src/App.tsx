@@ -1,8 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { isAuthenticated } from './lib/auth'
+import { AppLayout } from './components/layout/AppLayout'
+import { Toaster } from './components/ui/toast'
 import LoginPage from './pages/LoginPage'
 import ProxiesPage from './pages/ProxiesPage'
+import ProfilePage from './pages/ProfilePage'
 
 const queryClient = new QueryClient()
 
@@ -20,15 +23,18 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
-            path="/"
             element={
               <ProtectedRoute>
-                <ProxiesPage />
+                <AppLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="/" element={<ProxiesPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+          </Route>
         </Routes>
       </BrowserRouter>
+      <Toaster />
     </QueryClientProvider>
   )
 }
