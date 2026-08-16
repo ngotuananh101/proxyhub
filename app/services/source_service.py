@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy import tuple_
 from sqlmodel import Session, col, select
 
 from app.models.proxy import Proxy, ProxyStatus
@@ -29,34 +30,48 @@ def normalize_line(line: str) -> str | None:
 
 
 def import_source_text(session: Session, text: str) -> tuple[int, int]:
-    """Import proxies from fetched text. Returns (imported, duplicates)."""
-    imported = 0
-    duplicates = 0
+    """Import proxies from fetched text. Returns (imported, duplicates).
+
+    Existing proxies are looked up with a single bulk query instead of one
+    SELECT per line: thousands of round-trips would keep the write
+    transaction open long enough to starve the API's busy_timeout.
+    """
+    parsed: list[dict] = []
     seen: set[tuple[str, str, int]] = set()
 
     for raw in text.splitlines():
         line = normalize_line(raw)
         if line is None:
             continue
-        parsed = parse_proxy_line(line)
-        if parsed is None:
+        item = parse_proxy_line(line)
+        if item is None:
             continue
-        key = (parsed["scheme"], parsed["host"], parsed["port"])
+        key = (item["scheme"], item["host"], item["port"])
         if key in seen:
             continue
         seen.add(key)
+        parsed.append(item)
 
-        existing = session.exec(
-            select(Proxy).where(
-                Proxy.scheme == parsed["scheme"],
-                Proxy.host == parsed["host"],
-                Proxy.port == parsed["port"],
-            )
-        ).first()
-        if existing:
+    if not parsed:
+        session.commit()
+        return 0, 0
+
+    keys = [(item["scheme"], item["host"], item["port"]) for item in parsed]
+    existing = session.exec(
+        select(Proxy.scheme, Proxy.host, Proxy.port).where(
+            tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(keys)
+        )
+    ).all()
+    existing_keys = set(existing)
+
+    imported = 0
+    duplicates = 0
+    for item in parsed:
+        key = (item["scheme"], item["host"], item["port"])
+        if key in existing_keys:
             duplicates += 1
             continue
-        session.add(Proxy(**parsed))
+        session.add(Proxy(**item))
         imported += 1
 
     session.commit()

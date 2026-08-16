@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.source import ProxySource
@@ -63,6 +63,23 @@ class TestImportSourceText:
         import_source_text(session, "1.1.1.1:80")
         proxy = session.exec(select(Proxy)).one()
         assert proxy.status == ProxyStatus.ALIVE
+
+    def test_duplicate_check_is_a_single_bulk_query(self, session):
+        """One SELECT for all lines, not one per line.
+
+        A per-line SELECT keeps the write transaction open for thousands of
+        round-trips on big lists, which starves the API's busy_timeout and
+        surfaces as "database is locked".
+        """
+        session.add(Proxy(scheme="http", host="1.1.1.1", port=80))
+        session.commit()
+
+        text = "\n".join(f"10.0.{i // 250}.{i % 250}:80" for i in range(500))
+        with patch("sqlmodel.Session.exec", wraps=session.exec) as spy:
+            imported, duplicates = import_source_text(session, text)
+
+        assert (imported, duplicates) == (500, 0)
+        assert spy.call_count == 1
 
 
 class TestPurgeOldDeadProxies:
