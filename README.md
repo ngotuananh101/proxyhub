@@ -31,6 +31,7 @@ Target features of the project:
 
 - **🎯 Dynamic rotation gateway:** Uses **`proxy.py`** as the Gateway, automatically picking a live proxy from the pool for each request.
 - **🩺 Automatic health checks:** Integrates **`Celery`** running in the background to periodically check the latency and success rate of each proxy.
+- **📥 Automatic proxy sources:** Imports proxies from free proxy list feeds (plain-text URLs) on a per-source schedule — configurable from the Dashboard.
 - **📊 Comprehensive dashboard:** A **`React`** UI for managing proxies, viewing statistics, and request logs in real time.
 - **🗂️ Pool/group management:** Group proxies by country, ISP, or custom tags.
 - **⚡ Lightweight database:** Uses **`SQLite`** (read/write via WAL mode), no complex DB server setup required.
@@ -291,6 +292,14 @@ The Gateway only selects proxies in the `alive` state to forward traffic.
 Besides the automatic cycle, you can trigger a manual check at any time:
 - Click the **"Check now"** button on the React Dashboard (Proxy list page).
 - Or call the API: `POST /api/proxies/check-all`.
+
+### 4. Automatic Proxy Sources
+
+Go to Dashboard → **`Sources`** to manage free proxy list feeds. Each source is a plain-text URL (one proxy per line, `ip:port` or `scheme://ip:port`) with its own update interval in minutes. The Celery worker fetches every enabled source when its interval elapses and imports new proxies — always in the `unknown` state, classified by the next health check cycle. Existing proxies are never touched, and duplicates are skipped. Two well-known lists are seeded on first startup; add or remove sources freely.
+
+- **"Fetch now"** button forces an immediate fetch of one source.
+- Proxies that have been `dead` for longer than the retention period (Settings → *Dead proxy retention*, default 7 days) are removed automatically on each source fetch.
+- The download timeout is configurable in Settings → *Source fetch timeout*.
 
 ## 🧠 Proxy Rotation Logic (Gateway Plugin)
 

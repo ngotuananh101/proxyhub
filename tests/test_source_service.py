@@ -46,7 +46,9 @@ class TestImportSourceText:
         imported, duplicates = import_source_text(
             session, "1.1.1.1:80\n1.1.1.1:80\n2.2.2.2:80"
         )
-        assert (imported, duplicates) == (1, 2)
+        # First 1.1.1.1:80 hits the DB duplicate; the repeat within the text
+        # is dropped silently; 2.2.2.2:80 is new.
+        assert (imported, duplicates) == (1, 1)
 
     def test_skips_garbage_lines(self, session):
         text = "---------- [ ProxyList.to ] ----------\nHTTP Proxies\n1.1.1.1:80\n"
@@ -64,10 +66,10 @@ class TestImportSourceText:
 
 
 class TestPurgeOldDeadProxies:
-    def _seed(self, session, status: ProxyStatus, age_days: float) -> Proxy:
+    def _seed(self, session, status: ProxyStatus, age_days: float, host: str) -> Proxy:
         proxy = Proxy(
             scheme="http",
-            host="9.9.9.9",
+            host=host,
             port=80,
             status=status,
             updated_at=datetime.now(timezone.utc) - timedelta(days=age_days),
@@ -77,9 +79,9 @@ class TestPurgeOldDeadProxies:
         return proxy
 
     def test_removes_dead_older_than_retention(self, session):
-        old_dead = self._seed(session, ProxyStatus.DEAD, 8)
-        self._seed(session, ProxyStatus.DEAD, 1)  # recent dead kept
-        self._seed(session, ProxyStatus.ALIVE, 30)  # alive never purged
+        old_dead = self._seed(session, ProxyStatus.DEAD, 8, "9.9.9.1")
+        self._seed(session, ProxyStatus.DEAD, 1, "9.9.9.2")  # recent dead kept
+        self._seed(session, ProxyStatus.ALIVE, 30, "9.9.9.3")  # alive never purged
         removed = purge_old_dead_proxies(session, retention_days=7)
         assert removed == 1
         remaining = session.exec(select(Proxy)).all()
@@ -87,7 +89,7 @@ class TestPurgeOldDeadProxies:
         assert len(remaining) == 2
 
     def test_disabled_when_retention_is_zero(self, session):
-        self._seed(session, ProxyStatus.DEAD, 30)
+        self._seed(session, ProxyStatus.DEAD, 30, "9.9.9.1")
         assert purge_old_dead_proxies(session, retention_days=0) == 0
         assert len(session.exec(select(Proxy)).all()) == 1
 
