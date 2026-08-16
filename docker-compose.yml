@@ -1,0 +1,122 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: proxyhub-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - proxyhub-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxyhub-backend
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - proxyhub-network
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxyhub-worker
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - proxyhub-network
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxyhub-beat
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - proxyhub-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxyhub-gateway
+    restart: unless-stopped
+    command: python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 0.0.0.0 --port 8899
+    env_file:
+      - .env
+    environment:
+      - GATEWAY_API_URL=http://backend:8000/internal/proxies
+      - GATEWAY_LOG_URL=http://backend:8000/internal/logs
+    ports:
+      - "${GATEWAY_PORT:-8899}:8899"
+    depends_on:
+      - backend
+    networks:
+      - proxyhub-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: proxyhub-frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:80"
+    depends_on:
+      - backend
+    networks:
+      - proxyhub-network
+
+volumes:
+  app_data:
+  redis_data:
+
+networks:
+  proxyhub-network:
+    driver: bridge

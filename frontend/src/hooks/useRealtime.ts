@@ -26,12 +26,20 @@ let closeTimer: ReturnType<typeof setTimeout> | undefined
 // same-tick resubscribe cancel the close instead.
 const CLOSE_GRACE_MS = 1000
 
+function getWsUrl(token: string): string {
+  const customWsUrl = import.meta.env.VITE_WS_URL
+  if (customWsUrl) {
+    return `${customWsUrl}/ws/events?token=${encodeURIComponent(token)}`
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/events?token=${encodeURIComponent(token)}`
+}
+
 function connect() {
   const token = localStorage.getItem('access_token')
   if (!token) return
 
-  const base = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') as string
-  const url = `${base}/ws/events?token=${encodeURIComponent(token)}`
+  const url = getWsUrl(token)
 
   socket = new WebSocket(url)
   socket.onmessage = (e) => {
