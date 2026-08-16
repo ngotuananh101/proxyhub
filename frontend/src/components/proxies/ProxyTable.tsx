@@ -37,7 +37,7 @@ export function ProxyTable({
   const someSelected = selected.size > 0 && !allSelected
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card">
+    <div className="min-h-0 flex-1 overflow-auto bg-card">
       <Table>
         <TableHeader>
           <TableRow>

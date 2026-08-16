@@ -128,7 +128,7 @@ export default function ProxiesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Proxies</h1>
@@ -196,7 +196,7 @@ export default function ProxiesPage() {
       </div>
 
       {isPending || !data ? (
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="min-h-0 w-full flex-1" />
       ) : data.items.length === 0 ? (
         <Empty>
           <EmptyMedia variant="icon">
@@ -208,7 +208,7 @@ export default function ProxiesPage() {
           </EmptyDescription>
         </Empty>
       ) : (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col gap-6">
           <ProxyTable
             proxies={data.items}
             selected={selected}
@@ -216,7 +216,7 @@ export default function ProxiesPage() {
             onToggleSelectAll={toggleSelectAll}
             onDelete={handleDelete}
           />
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex shrink-0 items-center justify-between text-sm text-muted-foreground">
             <span>
               Page {data.page} — {data.total} total
             </span>
@@ -241,7 +241,7 @@ export default function ProxiesPage() {
               </Button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       <ImportDialog

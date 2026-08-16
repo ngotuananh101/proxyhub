@@ -6,11 +6,11 @@ import { AppSidebar } from './AppSidebar'
 
 export function AppLayout() {
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh">
       <AppSidebar />
       <SidebarInset>
         <AppHeader />
-        <div className="flex-1 p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
           <Outlet />
         </div>
         <AppFooter />
