@@ -63,10 +63,11 @@ export default function ProxiesPage() {
   const [checking, setChecking] = useState(false)
   const queryClient = useQueryClient()
 
-  // Refresh stats live when a health check cycle finishes
+  // Refresh stats and the table live as health check results stream in
   useRealtime((event) => {
     if (event.topic === 'stats') {
       queryClient.invalidateQueries({ queryKey: ['stats'] })
+      queryClient.invalidateQueries({ queryKey: ['proxies'] })
     }
   })
 

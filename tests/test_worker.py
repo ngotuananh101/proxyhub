@@ -188,6 +188,28 @@ class TestCheckAllProxies:
         assert count == 4
         assert peak <= 2
 
+    def test_flushes_results_progressively(self, engine):
+        """Stats are broadcast during the cycle, not only at the end."""
+        from app.services.health_service import CheckResult
+        from app.worker import check_all_proxies
+
+        _seed(
+            engine,
+            [Proxy(scheme="http", host=f"10.1.0.{i}", port=80) for i in range(3)],
+        )
+        with patch(
+            "app.worker.health_service.check_proxy",
+            new=AsyncMock(return_value=CheckResult(alive=True, latency_ms=1.0)),
+        ), patch("app.worker.FLUSH_INTERVAL", 0.0), patch(
+            "app.worker.broadcast_sync"
+        ) as mock_broadcast:
+            assert check_all_proxies() == 3
+
+        # One broadcast per flush (3 results, interval 0) plus the final one
+        assert mock_broadcast.call_count == 4
+        for call in mock_broadcast.call_args_list:
+            assert call.args[0] == "stats"
+
     def test_uses_settings_from_db(self, engine):
         from app.services.health_service import CheckResult
         from app.worker import check_all_proxies

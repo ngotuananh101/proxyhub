@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 from celery import Celery
@@ -42,6 +43,9 @@ celery_app.conf.beat_schedule = {
 CHECKABLE_SCHEMES = ("http", "https")
 CHECKABLE_STATUSES = (ProxyStatus.ALIVE, ProxyStatus.UNKNOWN)
 LAST_RUN_KEY = "HEALTH_CHECK_LAST_RUN_AT"
+# How often finished checks are flushed to the DB (and stats broadcast) while
+# a cycle is running, so the dashboard updates progressively.
+FLUSH_INTERVAL = 2.0
 
 
 def _get_engine():
@@ -122,16 +126,36 @@ def _mark_last_run(session: Session) -> None:
 
 
 async def _check_all(
-    proxies: list[Proxy], url: str, timeout: float, concurrency: int
+    proxies: list[Proxy],
+    url: str,
+    timeout: float,
+    concurrency: int,
+    on_result,
 ) -> list[health_service.CheckResult]:
-    """Check all proxies concurrently, bounded by `concurrency`."""
+    """Check all proxies concurrently, bounded by `concurrency`.
+
+    `on_result(proxy, result)` fires as soon as each check finishes, so the
+    caller can persist and broadcast results progressively.
+    """
     semaphore = asyncio.Semaphore(concurrency)
 
     async def _bounded(proxy: Proxy) -> health_service.CheckResult:
         async with semaphore:
-            return await health_service.check_proxy(proxy, url, timeout)
+            result = await health_service.check_proxy(proxy, url, timeout)
+        on_result(proxy, result)
+        return result
 
     return list(await asyncio.gather(*(_bounded(p) for p in proxies)))
+
+
+def _apply_result(session: Session, proxy: Proxy, result: health_service.CheckResult) -> None:
+    """Write one finished check result onto the session (not yet committed)."""
+    now = datetime.now(timezone.utc)
+    proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
+    proxy.latency_ms = result.latency_ms
+    proxy.last_checked_at = now
+    proxy.updated_at = now
+    session.add(proxy)
 
 
 @celery_app.task(name="app.worker.check_all_proxies")
@@ -140,6 +164,8 @@ def check_all_proxies(force: bool = False) -> int:
 
     Beat fires every 60s; the task skips unless HEALTH_CHECK_INTERVAL has
     elapsed since the last run, so the interval is editable at runtime.
+    Results are flushed to the DB (and stats broadcast) every FLUSH_INTERVAL
+    seconds while the cycle runs, so the dashboard updates progressively.
     """
     lock = _acquire_lock(CHECK_LOCK_NAME)
     if lock is None:
@@ -169,24 +195,31 @@ def check_all_proxies(force: bool = False) -> int:
                 _broadcast_stats(session)
                 return 0
 
+            # Periodic flush: commit finished results and push fresh stats so
+            # the dashboard tracks the cycle live instead of waiting for it.
+            last_flush = time.monotonic()
+
+            def on_result(proxy: Proxy, result: health_service.CheckResult) -> None:
+                nonlocal last_flush
+                _apply_result(session, proxy, result)
+                if time.monotonic() - last_flush >= FLUSH_INTERVAL:
+                    session.commit()
+                    _broadcast_stats(session)
+                    last_flush = time.monotonic()
+
             results = asyncio.run(
                 _check_all(
                     proxies,
                     url=str(values["HEALTH_CHECK_URL"]),
                     timeout=float(values["HEALTH_CHECK_TIMEOUT"]),
                     concurrency=int(values["HEALTH_CHECK_CONCURRENCY"]),
+                    on_result=on_result,
                 )
             )
 
-            now = datetime.now(timezone.utc)
-            for proxy, result in zip(proxies, results):
-                proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
-                proxy.latency_ms = result.latency_ms
-                proxy.last_checked_at = now
-                proxy.updated_at = now
-                session.add(proxy)
-            _mark_last_run(session)
+            # Final flush: results finished after the last periodic flush
             session.commit()
+            _mark_last_run(session)
             _broadcast_stats(session)
 
         alive = sum(1 for r in results if r.alive)
