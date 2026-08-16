@@ -25,6 +25,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,6 +65,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.627 0.194 149.214);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -99,6 +101,7 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.723 0.219 149.579);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -134,4 +137,28 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+}
+
+/* Sticky table header: the shadcn Table component wraps <table> in an
+   overflow-x-auto container, which becomes the nearest scroll container and
+   breaks position: sticky against the outer ScrollArea. Neutralise it so the
+   header sticks to the ScrollArea viewport instead. border-separate keeps the
+   header's bottom border visible while scrolling (collapse mode drops sticky
+   borders in Chromium). */
+.sticky-table-header [data-slot="table-container"] {
+  overflow-x: visible;
+}
+
+.sticky-table-header table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.sticky-table-header th,
+.sticky-table-header td {
+  border-bottom: 1px solid var(--border);
+}
+
+.sticky-table-header tbody tr:last-child td {
+  border-bottom: 0;
 }

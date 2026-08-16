@@ -38,9 +38,9 @@ export function ProxyTable({
   const someSelected = selected.size > 0 && !allSelected
 
   return (
-    <ScrollArea className="min-h-0 flex-1 bg-card">
+    <ScrollArea className="sticky-table-header min-h-0 flex-1 bg-card">
       <Table>
-        <TableHeader>
+        <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
           <TableRow>
             <TableHead className="w-10">
               <Checkbox
@@ -85,7 +85,10 @@ export function ProxyTable({
                 )}
               </TableCell>
               <TableCell>
-                <Badge variant={statusVariant[proxy.status] ?? 'secondary'}>
+                <Badge
+                  variant={statusVariant[proxy.status] ?? 'secondary'}
+                  className={proxy.status === 'alive' ? 'text-success' : undefined}
+                >
                   {proxy.status}
                 </Badge>
               </TableCell>
