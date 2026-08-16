@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -115,9 +116,9 @@ export default function SourcesPage() {
           ))}
         </div>
       ) : data && data.length > 0 ? (
-        <div className="bg-card">
+        <ScrollArea className="sticky-table-header min-h-0 flex-1 bg-card">
           <Table>
-            <TableHeader>
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
               <TableRow>
                 <TableHead className="w-12">On</TableHead>
                 <TableHead>Name</TableHead>
@@ -200,7 +201,7 @@ export default function SourcesPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </ScrollArea>
       ) : (
         <Empty>
           <EmptyTitle>No sources yet</EmptyTitle>
