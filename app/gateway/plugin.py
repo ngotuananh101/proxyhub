@@ -111,7 +111,8 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 host = url.hostname.decode("utf-8")
                 port = url.port or (443 if request.is_https_tunnel else 80)
         path = None if not request.path else request.path.decode()
-        self._metadata = [host, port, path, request.method]
+        method = None if not request.method else request.method.decode()
+        self._metadata = [host, port, path, method]
 
         # Add Proxy-Authorization header if credentials exist
         if self._endpoint and self._endpoint.has_credentials:
