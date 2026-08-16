@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
+from app.models.source import ProxySource
 
 
 @pytest.fixture(autouse=True)
@@ -257,3 +258,52 @@ class TestBeatSchedule:
         assert entry["task"] == "app.worker.check_all_proxies"
         # Fixed 60s tick; the task gates on HEALTH_CHECK_INTERVAL from the DB
         assert entry["schedule"] == 60.0
+
+    def test_source_fetch_schedule_configured(self):
+        from app.worker import celery_app
+
+        entry = celery_app.conf.beat_schedule["fetch-proxy-sources"]
+        assert entry["task"] == "app.worker.fetch_due_sources"
+        assert entry["schedule"] == 60.0
+
+
+class TestFetchDueSources:
+    def test_fetches_only_due_sources(self, engine):
+        from datetime import datetime, timezone
+
+        from app.worker import fetch_due_sources
+
+        with Session(engine) as session:
+            session.add(ProxySource(name="due", url="https://example.com/a.txt"))
+            session.add(
+                ProxySource(
+                    name="not-due",
+                    url="https://example.com/b.txt",
+                    last_fetched_at=datetime.now(timezone.utc),
+                    interval_minutes=60,
+                )
+            )
+            session.add(ProxySource(name="disabled", url="https://example.com/c.txt", enabled=False))
+            session.commit()
+
+        with patch(
+            "app.worker.fetch_and_import", return_value="ok: 0 imported, 0 duplicates"
+        ) as mock_fetch, patch("app.worker.seed_default_sources"):
+            count = fetch_due_sources()
+
+        assert count == 1
+        fetched = {call.args[1].name for call in mock_fetch.call_args_list}
+        assert fetched == {"due"}
+
+    def test_seeds_default_sources_on_first_run(self, engine):
+        from sqlmodel import select
+
+        from app.worker import fetch_due_sources
+
+        with patch("app.worker.fetch_and_import", return_value="ok"):
+            fetch_due_sources()
+
+        with Session(engine) as session:
+            names = {s.name for s in session.exec(select(ProxySource)).all()}
+        assert "monosans/proxy-list" in names
+        assert "TheSpeedX/PROXY-List" in names

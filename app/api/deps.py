@@ -29,6 +29,12 @@ def get_current_user(
     return user
 
 
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required")
+    return user
+
+
 def verify_internal_key(x_internal_key: str = Header(default="")) -> None:
     if not hmac.compare_digest(x_internal_key, settings.INTERNAL_API_KEY):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal key")

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { GlobeIcon, SettingsIcon, ShieldIcon, UserIcon } from 'lucide-react'
+import { DownloadIcon, GlobeIcon, SettingsIcon, ShieldIcon, UserIcon } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +15,7 @@ import {
 
 const navItems = [
   { to: '/', label: 'Proxies', icon: GlobeIcon },
+  { to: '/sources', label: 'Sources', icon: DownloadIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
   { to: '/profile', label: 'Profile', icon: UserIcon },
 ]

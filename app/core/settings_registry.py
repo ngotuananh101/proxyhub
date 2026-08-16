@@ -61,5 +61,26 @@ REGISTRY: dict[str, SettingDef] = {
             min=1,
             max=500,
         ),
+        SettingDef(
+            key="SOURCE_FETCH_TIMEOUT",
+            label="Source fetch timeout (seconds)",
+            description="Maximum time allowed when downloading a proxy source file.",
+            type="float",
+            default=30.0,
+            min=5,
+            max=120,
+        ),
+        SettingDef(
+            key="DEAD_PROXY_RETENTION_DAYS",
+            label="Dead proxy retention (days)",
+            description=(
+                "Proxies dead for longer than this are removed automatically "
+                "when a source is fetched. 0 disables removal."
+            ),
+            type="float",
+            default=7.0,
+            min=0,
+            max=365,
+        ),
     ]
 }

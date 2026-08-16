@@ -9,8 +9,10 @@ from app.core import database
 from app.core.config import settings
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
+from app.models.source import ProxySource
 from app.services import health_service
 from app.services.settings_service import get_all as get_settings
+from app.services.source_service import fetch_and_import, is_due, seed_default_sources
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +22,18 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
 )
 
-# Fixed 60s tick: the task itself gates on HEALTH_CHECK_INTERVAL (stored in
-# the DB), so interval changes made from the dashboard take effect within a
-# minute without restarting beat.
+# Fixed 60s tick: the tasks themselves gate on intervals stored in the DB
+# (HEALTH_CHECK_INTERVAL, per-source interval_minutes), so changes made from
+# the dashboard take effect within a minute without restarting beat.
 celery_app.conf.beat_schedule = {
     "check-all-proxies": {
         "task": "app.worker.check_all_proxies",
         "schedule": 60.0,
-    }
+    },
+    "fetch-proxy-sources": {
+        "task": "app.worker.fetch_due_sources",
+        "schedule": 60.0,
+    },
 }
 
 CHECKABLE_SCHEMES = ("http", "https")
@@ -122,3 +128,29 @@ def check_all_proxies(force: bool = False) -> int:
     alive = sum(1 for r in results if r.alive)
     logger.info("Checked %d proxies: %d alive, %d dead", len(results), alive, len(results) - alive)
     return len(results)
+
+
+@celery_app.task(name="app.worker.fetch_due_sources")
+def fetch_due_sources() -> int:
+    """Fetch every enabled source whose interval has elapsed.
+
+    Beat fires every 60s; each source is gated on its own interval_minutes,
+    so intervals are editable at runtime.
+    """
+    fetched = 0
+    with Session(_get_engine()) as session:
+        seed_default_sources(session)
+        values = get_settings(session)
+        timeout = float(values["SOURCE_FETCH_TIMEOUT"])
+        retention_days = float(values["DEAD_PROXY_RETENTION_DAYS"])
+        now = datetime.now(timezone.utc)
+        sources = session.exec(select(ProxySource)).all()
+        for source in sources:
+            if not is_due(source, now):
+                continue
+            fetch_and_import(session, source, timeout=timeout, retention_days=retention_days)
+            fetched += 1
+
+    if fetched:
+        logger.info("Fetched %d proxy sources", fetched)
+    return fetched

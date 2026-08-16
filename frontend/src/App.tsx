@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage'
 import ProxiesPage from './pages/ProxiesPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
+import SourcesPage from './pages/SourcesPage'
 
 const queryClient = new QueryClient()
 
@@ -35,6 +36,7 @@ export default function App() {
                 }
               >
                 <Route path="/" element={<ProxiesPage />} />
+                <Route path="/sources" element={<SourcesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
               </Route>

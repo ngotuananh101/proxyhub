@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_session
 from app.core.settings_registry import REGISTRY
 from app.models.user import User
@@ -43,10 +43,8 @@ def get_settings(
 def update_settings(
     body: SettingsUpdate,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
-    if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required")
     try:
         values = settings_service.update(session, body.values)
     except SettingValidationError as e:

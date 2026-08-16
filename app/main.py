@@ -8,10 +8,12 @@ from app.api.auth import router as auth_router
 from app.api.internal import router as internal_router
 from app.api.proxies import router as proxies_router
 from app.api.settings import router as settings_router
+from app.api.sources import router as sources_router
 from app.api.stats import router as stats_router
 from app.core.config import settings
 from app.core.database import create_db_and_tables, engine
 from app.services.settings_service import seed_settings
+from app.services.source_service import seed_default_sources
 
 
 def create_app(db_engine=None):
@@ -21,6 +23,7 @@ def create_app(db_engine=None):
             create_db_and_tables()
         with Session(db_engine or engine) as session:
             seed_settings(session)
+            seed_default_sources(session)
         yield
 
     app = FastAPI(title="ProxyHub", version="0.1.0", lifespan=lifespan)
@@ -37,6 +40,7 @@ def create_app(db_engine=None):
     app.include_router(proxies_router)
     app.include_router(stats_router)
     app.include_router(settings_router)
+    app.include_router(sources_router)
     app.include_router(internal_router)
 
     if db_engine is not None:
