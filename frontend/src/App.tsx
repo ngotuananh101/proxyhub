@@ -4,6 +4,7 @@ import { isAuthenticated } from './lib/auth'
 import { ThemeProvider } from './lib/theme'
 import { AppLayout } from './components/layout/AppLayout'
 import { Toaster } from './components/ui/toast'
+import { TooltipProvider } from './components/ui/tooltip'
 import LoginPage from './pages/LoginPage'
 import ProxiesPage from './pages/ProxiesPage'
 import ProfilePage from './pages/ProfilePage'
@@ -21,22 +22,24 @@ export default function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/" element={<ProxiesPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-        <Toaster />
+        <TooltipProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/" element={<ProxiesPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+          <Toaster />
+        </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
   )
