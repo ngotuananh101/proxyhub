@@ -6,9 +6,11 @@ import {
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
+  Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
 import {
+  clearDeadProxies,
   deleteManyProxies,
   deleteProxy,
   fetchProxies,
@@ -61,6 +63,7 @@ export default function ProxiesPage() {
   const [showImport, setShowImport] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
 
   // Refresh stats and the table live as health check results stream in
@@ -124,6 +127,23 @@ export default function ProxiesPage() {
     invalidate()
   }
 
+  const handleClearDead = async () => {
+    setClearing(true)
+    try {
+      const { deleted } = await clearDeadProxies()
+      toast.add({
+        type: 'success',
+        title: deleted > 0 ? `Removed ${deleted} dead proxies` : 'No dead proxies to remove',
+      })
+      setSelected(new Set())
+      invalidate()
+    } catch {
+      toast.add({ type: 'error', title: 'Failed to clear dead proxies' })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -166,6 +186,10 @@ export default function ProxiesPage() {
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <UploadIcon data-icon="inline-start" />
             Import
+          </Button>
+          <Button variant="outline" onClick={handleClearDead} disabled={clearing}>
+            <Trash2Icon data-icon="inline-start" />
+            Clear dead
           </Button>
           {selected.size > 0 && (
             <Button variant="destructive" onClick={handleDeleteSelected}>

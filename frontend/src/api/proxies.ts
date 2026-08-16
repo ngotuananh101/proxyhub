@@ -76,3 +76,8 @@ export async function triggerCheckAll(): Promise<CheckAllResponse> {
   return res.data
 }
 
+export async function clearDeadProxies(): Promise<{ deleted: number }> {
+  const res = await client.post('/api/proxies/clear-dead')
+  return res.data
+}
+

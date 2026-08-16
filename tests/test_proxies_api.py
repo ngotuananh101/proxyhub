@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.security import hash_password
+from app.models.proxy import Proxy, ProxyStatus
 from app.models.user import User
 
 
@@ -99,7 +100,9 @@ def test_proxies_require_auth(client):
 def test_check_all_dispatches_task(client, auth_headers):
     mock_async_result = MagicMock()
     mock_async_result.id = "fake-task-id"
-    with patch("app.api.proxies.check_all_proxies.delay", return_value=mock_async_result) as mock_delay:
+    with patch(
+        "app.api.proxies.check_all_proxies.delay", return_value=mock_async_result
+    ) as mock_delay:
         resp = client.post("/api/proxies/check-all", headers=auth_headers)
     assert resp.status_code == 202
     data = resp.json()
@@ -110,4 +113,25 @@ def test_check_all_dispatches_task(client, auth_headers):
 
 def test_check_all_requires_auth(client):
     resp = client.post("/api/proxies/check-all")
+    assert resp.status_code == 401
+
+
+def test_clear_dead_deletes_only_dead(client, auth_headers, engine):
+    with Session(engine) as session:
+        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE))
+        session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD))
+        session.add(Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.UNKNOWN))
+        session.commit()
+
+    resp = client.post("/api/proxies/clear-dead", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": 1}
+    remaining = client.get("/api/proxies", headers=auth_headers).json()
+    hosts = {item["host"] for item in remaining["items"]}
+    assert hosts == {"1.1.1.1", "3.3.3.3"}
+
+
+def test_clear_dead_requires_auth(client):
+    resp = client.post("/api/proxies/clear-dead")
     assert resp.status_code == 401

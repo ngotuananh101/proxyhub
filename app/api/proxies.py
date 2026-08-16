@@ -102,6 +102,19 @@ def trigger_check_all(_: User = Depends(get_current_user)):
     return {"detail": "Health check started", "task_id": result.id}
 
 
+@router.post("/clear-dead")
+def clear_dead_proxies(
+    session: Session = Depends(get_session),
+    _: User = Depends(get_current_user),
+):
+    """Delete every proxy currently marked dead."""
+    dead = session.exec(select(Proxy).where(Proxy.status == ProxyStatus.DEAD)).all()
+    for proxy in dead:
+        session.delete(proxy)
+    session.commit()
+    return {"deleted": len(dead)}
+
+
 @router.get("/{proxy_id}", response_model=ProxyResponse)
 def get_proxy(
     proxy_id: int,
