@@ -49,7 +49,7 @@ flowchart LR
     R[React Dashboard<br/>:5173] -->|REST API / WebSocket| B
     B -->|CRUD / Logs| D[(SQLite DB)]
 
-    CB[Celery Beat] -->|Trigger every 5 mins| CW[Celery Worker]
+    CB[Celery Beat] -->|Tick every 60s| CW[Celery Worker]
     CW -->|Test Proxy| P[Proxy Pool]
     CW -->|Update status / latency| D
     CW --> BR[(Redis)]
@@ -284,7 +284,7 @@ The response will be the IP of a proxy from the pool, and it will change on the 
 
 ### 3. Health Check
 
-The Celery worker automatically checks all proxies in the database periodically via `HEALTH_CHECK_URL`. The default cycle is **every 5 minutes** (triggered by Celery Beat), configurable through the `HEALTH_CHECK_INTERVAL` variable (in seconds) in `.env`. All proxies are checked **in parallel** within a single task — the number of concurrent checks is limited by `HEALTH_CHECK_CONCURRENCY` (default 50), and each check times out after `HEALTH_CHECK_TIMEOUT` seconds (default 6). As a result, a cycle with a few hundred proxies takes only tens of seconds. Only proxies in the `alive` or `unknown` state are checked — `dead` proxies are skipped to save time (to re-check them, delete and re-import that proxy). Each proxy is marked `alive` or `dead` along with its response time `latency_ms` and the `last_checked_at` timestamp.
+The Celery worker automatically checks all proxies in the database periodically via the health check URL. The default cycle is **every 5 minutes**, and the cycle parameters — URL, timeout, interval, and concurrency (`HEALTH_CHECK_URL`, `HEALTH_CHECK_TIMEOUT`, `HEALTH_CHECK_INTERVAL`, `HEALTH_CHECK_CONCURRENCY`) — can be changed at any time from the Dashboard → **`Settings`** page without editing `.env` or restarting any service (values are seeded from `.env` on first startup, and the database value takes precedence afterwards). All proxies are checked **in parallel** within a single task — the number of concurrent checks is limited by the concurrency setting (default 50), and each check times out after the configured timeout (default 6 seconds). As a result, a cycle with a few hundred proxies takes only tens of seconds. Only proxies in the `alive` or `unknown` state are checked — `dead` proxies are skipped to save time (to re-check them, delete and re-import that proxy). Each proxy is marked `alive` or `dead` along with its response time `latency_ms` and the `last_checked_at` timestamp.
 
 The Gateway only selects proxies in the `alive` state to forward traffic.
 

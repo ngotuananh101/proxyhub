@@ -6,6 +6,9 @@ import pytest
 from app.models.proxy import Proxy
 from app.services.health_service import CheckResult, build_proxy_url, check_proxy
 
+URL = "https://api.ipify.org"
+TIMEOUT = 6.0
+
 
 def _proxy(**kwargs) -> Proxy:
     defaults = {"scheme": "http", "host": "1.2.3.4", "port": 8080}
@@ -30,7 +33,7 @@ class TestCheckProxy:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=response
             )
-            result = await check_proxy(_proxy())
+            result = await check_proxy(_proxy(), URL, TIMEOUT)
         assert result.alive is True
         assert result.latency_ms is not None
         assert result.latency_ms >= 0
@@ -41,7 +44,7 @@ class TestCheckProxy:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=httpx.TimeoutException("timeout")
             )
-            result = await check_proxy(_proxy())
+            result = await check_proxy(_proxy(), URL, TIMEOUT)
         assert result == CheckResult(alive=False, latency_ms=None)
 
     @pytest.mark.anyio
@@ -50,7 +53,7 @@ class TestCheckProxy:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=httpx.ConnectError("refused")
             )
-            result = await check_proxy(_proxy())
+            result = await check_proxy(_proxy(), URL, TIMEOUT)
         assert result == CheckResult(alive=False, latency_ms=None)
 
     @pytest.mark.anyio
@@ -62,7 +65,7 @@ class TestCheckProxy:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=response
             )
-            result = await check_proxy(_proxy())
+            result = await check_proxy(_proxy(), URL, TIMEOUT)
         assert result.alive is True
 
     @pytest.mark.anyio
@@ -73,7 +76,7 @@ class TestCheckProxy:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 return_value=response
             )
-            await check_proxy(_proxy())
+            await check_proxy(_proxy(), URL, 9.5)
         _, kwargs = mock_client.call_args
         assert kwargs["proxy"] == "http://1.2.3.4:8080"
-        assert kwargs["timeout"] == 6.0
+        assert kwargs["timeout"] == 9.5

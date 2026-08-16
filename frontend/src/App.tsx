@@ -8,6 +8,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import LoginPage from './pages/LoginPage'
 import ProxiesPage from './pages/ProxiesPage'
 import ProfilePage from './pages/ProfilePage'
+import SettingsPage from './pages/SettingsPage'
 
 const queryClient = new QueryClient()
 
@@ -34,6 +35,7 @@ export default function App() {
                 }
               >
                 <Route path="/" element={<ProxiesPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
               </Route>
             </Routes>
