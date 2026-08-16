@@ -17,6 +17,14 @@ const listeners = new Set<Listener>()
 let socket: WebSocket | null = null
 let retry = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
+let closeTimer: ReturnType<typeof setTimeout> | undefined
+
+// How long to wait after the last subscriber leaves before closing the
+// socket. React Router unmounts the old page before mounting the next one
+// (and StrictMode remounts on first load), so an immediate close would
+// churn the connection on every tab switch. A short grace period lets a
+// same-tick resubscribe cancel the close instead.
+const CLOSE_GRACE_MS = 1000
 
 function connect() {
   const token = localStorage.getItem('access_token')
@@ -48,14 +56,16 @@ function connect() {
 
 function subscribe(listener: Listener) {
   listeners.add(listener)
+  clearTimeout(closeTimer)
   if (!socket) connect()
   return () => {
     listeners.delete(listener)
-    if (listeners.size === 0) {
+    if (listeners.size > 0) return
+    closeTimer = setTimeout(() => {
       clearTimeout(retryTimer)
       socket?.close()
       socket = null
-    }
+    }, CLOSE_GRACE_MS)
   }
 }
 
