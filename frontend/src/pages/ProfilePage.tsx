@@ -202,7 +202,7 @@ export default function ProfilePage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 p-1 pb-6">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
           <p className="text-sm text-muted-foreground">
@@ -218,7 +218,7 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="grid max-w-3xl gap-6">
+        <div className="grid gap-6 lg:grid-cols-2 items-start">
           <ProfileForm />
           <PasswordForm />
         </div>
