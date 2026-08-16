@@ -10,6 +10,7 @@ from app.schemas.log import RequestLogResponse
 from app.schemas.proxy import InternalProxyResponse
 from app.services.events import broadcast_sync
 from app.services.proxy_service import select_random_proxy
+from app.services.settings_service import get_all as get_settings
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -29,6 +30,9 @@ def get_proxy_for_gateway(
     if proxy is None:
         raise HTTPException(status_code=404, detail="No available proxy")
 
+    settings_values = get_settings(session)
+    default_target = str(settings_values.get("HEALTH_CHECK_URL", "https://api.ipify.org"))
+
     return InternalProxyResponse(
         id=proxy.id,
         scheme=proxy.scheme,
@@ -36,6 +40,7 @@ def get_proxy_for_gateway(
         port=proxy.port,
         username=proxy.username,
         password=proxy.password,
+        default_target_url=default_target,
     )
 
 

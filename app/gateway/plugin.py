@@ -24,8 +24,8 @@ INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 API_TIMEOUT = 2.0
 
 
-def fetch_proxy_from_api(api_url: str, api_key: str) -> Optional[Url]:
-    """Call the internal API to get one usable proxy. Returns Url or None."""
+def fetch_proxy_from_api(api_url: str, api_key: str) -> tuple[Optional[Url], Optional[str]]:
+    """Call the internal API to get one usable proxy and the default target URL. Returns (Url, target_url) or (None, None)."""
     try:
         resp = httpx.get(
             api_url,
@@ -35,11 +35,11 @@ def fetch_proxy_from_api(api_url: str, api_key: str) -> Optional[Url]:
         )
     except Exception as e:
         logger.error("Failed to reach backend API: %s", e)
-        return None
+        return None, None
 
     if resp.status_code != 200:
         logger.warning("Backend returned %d: %s", resp.status_code, resp.text)
-        return None
+        return None, None
 
     data = resp.json()
     # Build proxy URL: scheme://[user:pass@]host:port
@@ -47,7 +47,7 @@ def fetch_proxy_from_api(api_url: str, api_key: str) -> Optional[Url]:
     if data.get("username") and data.get("password"):
         auth = f"{data['username']}:{data['password']}@"
     url_str = f"{data['scheme']}://{auth}{data['host']}:{data['port']}"
-    return Url.from_bytes(bytes_(url_str))
+    return Url.from_bytes(bytes_(url_str)), data.get("default_target_url")
 
 
 def send_access_log(payload: Dict[str, Any]) -> None:
@@ -69,6 +69,7 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._endpoint: Optional[Url] = None
+        self._default_target: Optional[str] = None
         self._metadata: List[Any] = [None, None, None, None]
 
     def handle_upstream_data(self, raw: memoryview) -> None:
@@ -76,7 +77,9 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
 
     def before_upstream_connection(self, request: HttpParser) -> Optional[HttpParser]:
         """Fetch proxy from API and connect to it. Return None to skip default upstream."""
-        self._endpoint = fetch_proxy_from_api(GATEWAY_API_URL, INTERNAL_API_KEY)
+        self._endpoint, self._default_target = fetch_proxy_from_api(
+            GATEWAY_API_URL, INTERNAL_API_KEY
+        )
         if self._endpoint is None:
             raise HttpProtocolException("No available proxy from ProxyHub backend")
 
@@ -102,6 +105,27 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         """Forward request to upstream proxy, adding Proxy-Authorization if needed."""
         if not self.upstream:
             return request
+
+        # If the client sent a direct request without a remote target host (e.g. browsing directly to gateway :8899),
+        # rewrite to default target from health check settings.
+        if (
+            self._default_target
+            and not request.is_https_tunnel
+            and (
+                not request.has_header(b"host")
+                or not request.path
+                or not request.path.startswith(b"http://")
+            )
+        ):
+            target_url = Url.from_bytes(bytes_(self._default_target))
+            if target_url.hostname:
+                target_port = target_url.port or (443 if target_url.scheme == b"https" else 80)
+                request.add_header(
+                    b"Host",
+                    target_url.hostname
+                    + (b":" + bytes_(str(target_port)) if target_url.port else b""),
+                )
+                request.path = bytes_(self._default_target)
 
         # Track metadata for access log
         host, port = None, None

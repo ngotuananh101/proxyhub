@@ -63,3 +63,4 @@ class InternalProxyResponse(BaseModel):
     port: int
     username: str | None = None
     password: str | None = None
+    default_target_url: str | None = None

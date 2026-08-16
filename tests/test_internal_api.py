@@ -35,6 +35,7 @@ def test_internal_returns_proxy(client, engine):
     data = resp.json()
     assert data["host"] == "1.1.1.1"
     assert data["port"] == 80
+    assert "default_target_url" in data
 
 
 def test_internal_excludes_dead(client, engine):
