@@ -16,9 +16,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting — noUnusedLocals tắt vì file shadcn CLI sinh ra (ui/) có
-       import thừa (vd: `import * as React`) và ta không sửa tay file đó;
-       unused imports vẫn bị oxlint nhắc. */
+    /* Linting — noUnusedLocals is off because shadcn CLI-generated files
+       (ui/) contain unused imports (e.g. `import * as React`) and those
+       files are never hand-edited; oxlint still flags unused imports. */
     "noUnusedLocals": false,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

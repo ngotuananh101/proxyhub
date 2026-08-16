@@ -73,7 +73,7 @@ export function AddProxyDialog({ open, onOpenChange, onCreated }: Props) {
         username: username || undefined,
         password: password || undefined,
       })
-      toast.add({ type: 'success', title: 'Đã thêm proxy' })
+      toast.add({ type: 'success', title: 'Proxy added' })
       onCreated()
       handleOpenChange(false)
     } catch (err: unknown) {
@@ -92,7 +92,7 @@ export function AddProxyDialog({ open, onOpenChange, onCreated }: Props) {
         <DialogHeader>
           <DialogTitle>Add Proxy</DialogTitle>
           <DialogDescription>
-            Thêm một proxy vào pool. socks5 chưa được hỗ trợ qua gateway.
+            Add a proxy to the pool. socks5 is not supported through the gateway.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>

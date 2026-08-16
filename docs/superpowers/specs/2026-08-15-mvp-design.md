@@ -1,40 +1,40 @@
-# ProxyHub — Phần 1: MVP End-to-End (Design Spec)
+# ProxyHub — Part 1: MVP End-to-End (Design Spec)
 
-- **Ngày:** 2026-08-15
-- **Trạng thái:** Đã phê duyệt
-- **Phạm vi:** Phần 1 trong 6 phần của roadmap (MVP, Health Check, Multi-tenant, Sticky Session, WebSocket Logs, Docker Compose)
+- **Date:** 2026-08-15
+- **Status:** Approved
+- **Scope:** Part 1 of 6 in the roadmap (MVP, Health Check, Multi-tenant, Sticky Session, WebSocket Logs, Docker Compose)
 
-## 1. Mục tiêu
+## 1. Objectives
 
-Chạy được luồng end-to-end trên Windows native:
+Run an end-to-end flow on native Windows:
 
 ```
 curl -x http://127.0.0.1:8899 http://target
 ```
 
-→ request đi ra internet qua một proxy trong pool, tự xoay IP giữa các request, quản lý pool bằng Dashboard React có đăng nhập JWT.
+→ request goes out to the internet through a proxy in the pool, automatically rotates IP between requests, pool managed via a React Dashboard with JWT login.
 
-### Quyết định nền tảng (áp dụng cho toàn dự án)
+### Foundational Decisions (applicable across the entire project)
 
-| Quyết định | Lựa chọn |
+| Decision | Choice |
 |---|---|
-| Phạm vi MVP | Full-stack end-to-end (Backend + Gateway + Dashboard) |
-| Auth | JWT ngay từ MVP, tạo user qua CLI (không có register công khai) |
-| Kiểm thử | pytest (backend) + Vitest/Testing Library (frontend) |
-| Môi trường dev | Windows native: Redis qua Memurai/Redis-Windows, Celery `--pool=solo` |
-| Gateway lấy proxy | Gọi internal API mỗi request (không cache tại plugin) |
+| MVP Scope | Full-stack end-to-end (Backend + Gateway + Dashboard) |
+| Auth | JWT from the MVP stage, user creation via CLI (no public registration) |
+| Testing | pytest (backend) + Vitest/Testing Library (frontend) |
+| Dev Environment | Native Windows: Redis via Memurai/Redis-Windows, Celery `--pool=solo` |
+| Gateway proxy retrieval | Call internal API on every request (no caching in the plugin) |
 
-## 2. Kiến trúc Backend
+## 2. Backend Architecture
 
 ```
 app/
-├── main.py              # FastAPI app, mount routers, tạo bảng khi khởi động
-├── cli.py               # CLI: create-admin (argparse, không thêm dependency)
+├── main.py              # FastAPI app, mount routers, create tables on startup
+├── cli.py               # CLI: create-admin (argparse, no additional dependencies)
 ├── core/
-│   ├── config.py        # pydantic-settings đọc .env
+│   ├── config.py        # pydantic-settings reads .env
 │   ├── database.py      # SQLModel engine, SQLite WAL + busy_timeout=5000ms
-│   └── security.py      # JWT encode/decode, hash password (bcrypt trực tiếp)
-├── models/              # SQLModel bảng: User, Proxy
+│   └── security.py      # JWT encode/decode, password hashing (direct bcrypt)
+├── models/              # SQLModel tables: User, Proxy
 ├── schemas/             # Pydantic request/response
 ├── api/
 │   ├── deps.py          # get_current_user (JWT), verify_internal_key
@@ -43,173 +43,173 @@ app/
 │   ├── stats.py         # /api/stats/summary
 │   └── internal.py      # /internal/proxies (X-Internal-Key)
 ├── services/
-│   ├── proxy_service.py # parse/validate/import text, dedupe, chọn proxy
-│   └── auth_service.py  # login, tạo user
+│   ├── proxy_service.py # parse/validate/import text, dedupe, proxy selection
+│   └── auth_service.py  # login, user creation
 └── gateway/
-    └── plugin.py        # RotateProxyPlugin (chạy tiến trình riêng)
+    └── plugin.py        # RotateProxyPlugin (runs as a separate process)
 ```
 
-- Không dùng Alembic ở MVP: SQLModel `create_all()` khi khởi động. Migration thêm khi schema phức tạp hơn (Phần 3).
-- Ruff làm linter/formatter duy nhất cho Python.
-- Hash password bằng `bcrypt` trực tiếp (không dùng `passlib` — passlib có bug đã biết với bcrypt ≥ 4.1).
+- Do not use Alembic in MVP: SQLModel `create_all()` on startup. Migrations will be added when the schema becomes more complex (Part 3).
+- Ruff as the single linter/formatter for Python.
+- Hash passwords using `bcrypt` directly (do not use `passlib` — passlib has a known bug with bcrypt ≥ 4.1).
 
 ## 3. Data Model
 
 ### User
 
-| Cột | Kiểu | Ghi chú |
+| Column | Type | Notes |
 |---|---|---|
 | id | int PK | |
 | username | str unique | |
 | email | str unique, nullable | |
 | hashed_password | str | bcrypt |
-| is_admin | bool | mặc định `false` |
+| is_admin | bool | default `false` |
 | created_at | datetime | |
 
 ### Proxy
 
-| Cột | Kiểu | Ghi chú |
+| Column | Type | Notes |
 |---|---|---|
 | id | int PK | |
-| scheme | str | `http` / `https` (MVP — socks5 lưu được nhưng gateway không dùng) |
+| scheme | str | `http` / `https` (MVP — socks5 can be stored but gateway does not use it) |
 | host | str | |
 | port | int | |
-| username / password | str nullable | credential upstream |
-| status | enum | `unknown` / `alive` / `dead`, mặc định `unknown` |
-| latency_ms | float nullable | để trống cho Phần 2 |
-| last_checked_at | datetime nullable | để trống cho Phần 2 |
+| username / password | str nullable | upstream credentials |
+| status | enum | `unknown` / `alive` / `dead`, default `unknown` |
+| latency_ms | float nullable | left blank for Part 2 |
+| last_checked_at | datetime nullable | left blank for Part 2 |
 | created_at / updated_at | datetime | |
 
-- Unique constraint: `(scheme, host, port)` để dedupe khi import.
-- `status` mặc định `unknown` vì MVP chưa có health check. Gateway chọn proxy `status != 'dead'` (chấp nhận `unknown` lẫn `alive`). Sang Phần 2, gateway chỉ chọn `alive`.
+- Unique constraint: `(scheme, host, port)` for deduplication during import.
+- `status` defaults to `unknown` because the MVP does not have health checks yet. The gateway selects proxies with `status != 'dead'` (accepting both `unknown` and `alive`). In Part 2, the gateway will only select `alive`.
 
 ## 4. API Design
 
 ### Auth — `/api/auth`
 
-| Method | Endpoint | Mô tả |
+| Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/auth/login` | Body `{username, password}` → `{access_token, token_type: "bearer"}` |
-| GET | `/api/auth/me` | Thông tin user hiện tại (cần JWT) |
+| GET | `/api/auth/me` | Current user info (requires JWT) |
 
-- JWT payload: `sub` (user id), `exp`. Thời hạn theo `ACCESS_TOKEN_EXPIRE_MINUTES` (mặc định 1440).
-- Không có endpoint register công khai — user chỉ tạo qua CLI `create-admin`. Register để Phần 3.
+- JWT payload: `sub` (user id), `exp`. Expiration according to `ACCESS_TOKEN_EXPIRE_MINUTES` (default 1440).
+- No public registration endpoint — users are only created via the `create-admin` CLI. Registration is deferred to Part 3.
 
-### Proxies — `/api/proxies` (cần JWT)
+### Proxies — `/api/proxies` (requires JWT)
 
-| Method | Endpoint | Mô tả |
+| Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/proxies` | List + phân trang (`?page=1&size=20`), filter `?status=&scheme=&q=` |
-| POST | `/api/proxies` | Thêm 1 proxy (body JSON) |
-| POST | `/api/proxies/import` | Body `{text}` — parse nhiều dòng → `{imported, duplicates, invalid: [{line, reason}]}` |
-| GET | `/api/proxies/{id}` | Chi tiết 1 proxy |
-| PUT | `/api/proxies/{id}` | Sửa host, port, credential |
-| DELETE | `/api/proxies/{id}` | Xoá 1 proxy |
-| DELETE | `/api/proxies` | Xoá nhiều: body `{ids: [...]}` |
+| GET | `/api/proxies` | List + pagination (`?page=1&size=20`), filter `?status=&scheme=&q=` |
+| POST | `/api/proxies` | Add 1 proxy (JSON body) |
+| POST | `/api/proxies/import` | Body `{text}` — parse multiple lines → `{imported, duplicates, invalid: [{line, reason}]}` |
+| GET | `/api/proxies/{id}` | Details of 1 proxy |
+| PUT | `/api/proxies/{id}` | Edit host, port, credentials |
+| DELETE | `/api/proxies/{id}` | Delete 1 proxy |
+| DELETE | `/api/proxies` | Bulk delete: body `{ids: [...]}` |
 
-### Stats — `/api/stats` (cần JWT)
+### Stats — `/api/stats` (requires JWT)
 
-| Method | Endpoint | Mô tả |
+| Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/stats/summary` | `{total, alive, dead, unknown}` |
 
-### Internal — `/internal` (cần header `X-Internal-Key`)
+### Internal — `/internal` (requires header `X-Internal-Key`)
 
-| Method | Endpoint | Mô tả |
+| Method | Endpoint | Description |
 |---|---|---|
-| GET | `/internal/proxies?strategy=random` | Trả 1 proxy dùng được: `{id, scheme, host, port, username, password}` |
+| GET | `/internal/proxies?strategy=random` | Returns 1 usable proxy: `{id, scheme, host, port, username, password}` |
 
-Chi tiết:
+Details:
 
-- Chọn proxy: query `status != 'dead'`, chọn ngẫu nhiên bằng Python `random.choice` (pool MVP nhỏ, không cần SQL random).
-- `strategy`: mặc định `random`; MVP chỉ hỗ trợ `random`, giá trị khác → `400`. Giữ param để Phần 4 thêm `sticky` không vỡ API.
-- Không có proxy dùng được → `404 {detail: "No available proxy"}`.
-- Xác thực: so khớp `X-Internal-Key` với `INTERNAL_API_KEY` trong env (constant-time compare). Sai/thiếu → `401`.
-- Chỉ trả field gateway cần để nối upstream, không lộ thông tin nội bộ khác.
+- Proxy selection: query `status != 'dead'`, select randomly using Python `random.choice` (MVP pool is small, no SQL random needed).
+- `strategy`: defaults to `random`; MVP only supports `random`, other values → `400`. Keeping the param so Part 4 can add `sticky` without breaking the API.
+- No usable proxy → `404 {detail: "No available proxy"}`.
+- Authentication: compare `X-Internal-Key` with `INTERNAL_API_KEY` in env (constant-time comparison). Invalid/missing → `401`.
+- Only return fields needed by the gateway to connect upstream, without exposing other internal information.
 
-### Quy ước chung
+### General Conventions
 
-- Lỗi chuẩn FastAPI: `400` validate, `401` chưa xác thực, `404` không tìm thấy, `409` trùng proxy khi thêm đơn lẻ.
-- Response schema tách riêng khỏi DB model (không lộ `hashed_password`).
-- CORS: cho phép `http://localhost:5173`, config qua env `CORS_ORIGINS`.
+- Standard FastAPI errors: `400` validation error, `401` unauthorized, `404` not found, `409` duplicate proxy on single creation.
+- Response schemas are separated from DB models (no exposure of `hashed_password`).
+- CORS: allow `http://localhost:5173`, configured via env `CORS_ORIGINS`.
 
 ## 5. Gateway Plugin (`RotateProxyPlugin`)
 
-### Cách chạy
+### How to Run
 
 ```bash
 proxy --plugin-name app.gateway.plugin.RotateProxyPlugin \
       --hostname 127.0.0.1 --port 8899 --threaded
 ```
 
-- Threaded mode để plugin gọi HTTP đồng bộ tới Backend không block event loop. Trade-off chấp nhận được ở quy mô MVP.
-- Plugin đọc config từ env khi khởi động: `GATEWAY_API_URL`, `INTERNAL_API_KEY`.
+- Threaded mode so the plugin's synchronous HTTP calls to the Backend do not block the event loop. Acceptable trade-off at MVP scale.
+- Plugin reads config from env on startup: `GATEWAY_API_URL`, `INTERNAL_API_KEY`.
 
-### Luồng xử lý mỗi request
+### Request Processing Flow
 
 ```
 Client request → before_upstream_connection()
   ├─ GET {GATEWAY_API_URL}?strategy=random (timeout 2s, header X-Internal-Key)
-  ├─ 200 → set request.upstream = http://[user:pass@]host:port → tiếp tục
-  ├─ 404 (không có proxy) → log + teardown, trả 502 "No available proxy"
-  └─ Lỗi/timeout (Backend down) → log + teardown, trả 502 "Proxy service unavailable"
+  ├─ 200 → set request.upstream = http://[user:pass@]host:port → continue
+  ├─ 404 (no available proxy) → log + teardown, return 502 "No available proxy"
+  └─ Error/timeout (Backend down) → log + teardown, return 502 "Proxy service unavailable"
 ```
 
-- Hook `before_upstream_connection`: gọi API và gán upstream; trả `None` để từ chối request. Nếu cơ chế proxy.py không cho trả 502 đẹp, fallback là log + teardown (client nhận connection reset) — chấp nhận ở MVP, ghi chú lại.
-- Proxy auth upstream: plugin set upstream URL kèm credential. Nếu proxy.py base plugin không tự inject `Proxy-Authorization`, plugin thêm header thủ công (cho cả HTTP thường lẫn CONNECT). Verify bằng test tích hợp khi implement.
+- Hook `before_upstream_connection`: call API and assign upstream; return `None` to reject the request. If the proxy.py mechanism does not allow returning a clean 502, the fallback is log + teardown (client receives connection reset) — acceptable in MVP, noted accordingly.
+- Upstream proxy auth: plugin sets upstream URL with credentials. If proxy.py base plugin does not automatically inject `Proxy-Authorization`, the plugin manually adds the header (for both regular HTTP and CONNECT). Verify with integration tests during implementation.
 
-### Nguyên tắc thiết kế
+### Design Principles
 
-1. Plugin không giữ state — mỗi request một lần gọi API độc lập. Không cache, không retry tự động (request fail thì client tự retry, sẽ được IP khác — chính là "xoay proxy").
-2. Không xác thực client ở MVP — gateway bind `127.0.0.1`. Proxy-auth per user để Phần 3.
-3. Log tối thiểu: mỗi request 1 dòng (proxy được chọn, target host, kết quả) ra stdout bằng Python logging. Ghi log vào DB để Phần 5.
-4. Không loop-prevention ở MVP (chặn request tới chính Backend) — việc của Phần 5/6.
+1. Plugin holds no state — each request is an independent API call. No caching, no automatic retry (if a request fails, the client retries and gets a different IP — which is "proxy rotation").
+2. No client authentication in MVP — gateway binds to `127.0.0.1`. Per-user proxy-auth is deferred to Part 3.
+3. Minimal logging: 1 line per request (selected proxy, target host, result) to stdout using Python logging. Logging to DB is deferred to Part 5.
+4. No loop-prevention in MVP (blocking requests directed at the Backend itself) — handled in Part 5/6.
 
 ## 6. Frontend (React Dashboard)
 
-### Stack & cấu trúc
+### Stack & Structure
 
 ```
 frontend/
 ├── src/
 │   ├── api/
-│   │   ├── client.ts        # Axios: baseURL từ VITE_API_URL, gắn Authorization, 401 → redirect login
+│   │   ├── client.ts        # Axios: baseURL from VITE_API_URL, attaches Authorization, 401 → redirect login
 │   │   ├── auth.ts          # login(), me()
 │   │   └── proxies.ts       # list/create/import/update/delete, stats
 │   ├── components/
 │   │   ├── ui/              # shadcn/ui
-│   │   ├── ProxyTable.tsx   # Bảng proxy + filter + phân trang
-│   │   ├── ImportDialog.tsx # Paste text import nhiều proxy
-│   │   ├── ProxyForm.tsx    # Form thêm/sửa 1 proxy
+│   │   ├── ProxyTable.tsx   # Proxy table + filter + pagination
+│   │   ├── ImportDialog.tsx # Paste text to import multiple proxies
+│   │   ├── ProxyForm.tsx    # Form to add/edit 1 proxy
 │   │   └── StatCards.tsx    # Total/Alive/Dead/Unknown
 │   ├── pages/
 │   │   ├── LoginPage.tsx
-│   │   └── ProxiesPage.tsx  # Trang chính duy nhất của MVP
-│   ├── lib/auth.ts          # Token trong localStorage, hook useAuth
+│   │   └── ProxiesPage.tsx  # Only main page for MVP
+│   ├── lib/auth.ts          # Token in localStorage, useAuth hook
 │   ├── App.tsx              # Router: /login, / (protected)
 │   └── main.tsx
-├── .env.example             # VITE_API_URL, VITE_WS_URL (để sẵn cho Phần 5)
+├── .env.example             # VITE_API_URL, VITE_WS_URL (ready for Part 5)
 └── package.json
 ```
 
-### Màn hình
+### Screens
 
-**Login (`/login`):** form username/password → `/api/auth/login` → lưu token localStorage → chuyển `/`. Đã có token hợp lệ thì vào thẳng `/`.
+**Login (`/login`):** username/password form → `/api/auth/login` → save token to localStorage → navigate to `/`. If a valid token already exists, redirect directly to `/`.
 
 **Proxies (`/`):**
 
-- Hàng StatCards trên cùng (gọi `/api/stats/summary`).
-- Toolbar: ô tìm kiếm host, filter status (All/Alive/Dead/Unknown), nút Add Proxy / Import / Delete selected.
-- ProxyTable: checkbox, scheme (badge), host:port, credential (ẩn, hiện khi bấm 👁), status (badge màu), latency (— ở MVP), created_at, hành động sửa/xoá. Phân trang 20 dòng/trang.
-- ImportDialog: textarea paste nhiều dòng → `/api/proxies/import` → hiện `imported / duplicates / invalid` (kèm lý do từng dòng lỗi) → reload bảng.
-- ProxyForm (dialog): scheme (chỉ http/https — socks5 disabled kèm tooltip "chưa hỗ trợ qua gateway"), host, port, username, password.
+- Top row of StatCards (calls `/api/stats/summary`).
+- Toolbar: host search input, status filter (All/Alive/Dead/Unknown), Add Proxy / Import / Delete selected buttons.
+- ProxyTable: checkbox, scheme (badge), host:port, credentials (masked, revealed by clicking 👁), status (colored badge), latency (— in MVP), created_at, edit/delete actions. Pagination at 20 rows/page.
+- ImportDialog: multi-line paste textarea → `/api/proxies/import` → display `imported / duplicates / invalid` (with reasons for each invalid line) → reload table.
+- ProxyForm (dialog): scheme (http/https only — socks5 disabled with tooltip "not supported via gateway yet"), host, port, username, password.
 
-### Quy ước
+### Conventions
 
-- React Query (TanStack Query) cho data fetching — cache, loading/error, invalidate sau mutation.
-- React Router v6, route `/` bọc trong guard kiểm tra token.
-- Tailwind + shadcn/ui, dark mode mặc định.
-- Không làm ở MVP: trang Settings (Phần 2), realtime logs (Phần 5), quản lý user/pool (Phần 3).
+- React Query (TanStack Query) for data fetching — cache, loading/error, invalidate after mutation.
+- React Router v6, route `/` wrapped in a token verification guard.
+- Tailwind + shadcn/ui, dark mode by default.
+- Out of scope for MVP: Settings page (Part 2), realtime logs (Part 5), user/pool management (Part 3).
 
 ## 7. Scaffold & Dependencies
 
@@ -219,61 +219,61 @@ proxyhub/
 ├── frontend/               # React
 ├── tests/                  # pytest: unit + integration backend
 ├── requirements.txt        # fastapi, uvicorn, sqlmodel, pydantic-settings,
-│                           #   celery (cài sẵn cho Phần 2), proxy.py, bcrypt,
+│                           #   celery (pre-installed for Part 2), proxy.py, bcrypt,
 │                           #   PyJWT, httpx, python-multipart
 ├── requirements-dev.txt    # pytest, pytest-asyncio, ruff
-├── .env.example            # Như README + INTERNAL_API_KEY + CORS_ORIGINS
+├── .env.example            # Like README + INTERNAL_API_KEY + CORS_ORIGINS
 ├── .gitignore              # venv, .env, *.db, node_modules, dist
 ├── pyproject.toml          # ruff + pytest config
-└── README.md, LICENSE      # Đã có
+└── README.md, LICENSE      # Already present
 ```
 
-## 8. Chiến lược test
+## 8. Testing Strategy
 
 ### Backend (pytest)
 
-| Nhóm | Test gì |
+| Group | What to Test |
 |---|---|
-| `proxy_service` | Parse text import: dòng hợp lệ, dòng lỗi (sai scheme, thiếu port, URL rác), dedupe, socks5 bị loại khỏi gateway selection |
-| Auth | Login đúng/sai password, JWT hết hạn, endpoint không token → 401 |
-| API proxies | CRUD đầy đủ, filter/phân trang, import trả đúng counts, xoá nhiều |
-| Internal API | Không key → 401, sai key → 401, có key → trả proxy `unknown`/`alive`, không trả `dead`, hết proxy → 404 |
+| `proxy_service` | Text import parsing: valid lines, invalid lines (wrong scheme, missing port, malformed URL), deduplication, socks5 excluded from gateway selection |
+| Auth | Login with correct/wrong password, expired JWT, endpoint without token → 401 |
+| Proxies API | Full CRUD, filter/pagination, import returns correct counts, bulk delete |
+| Internal API | No key → 401, invalid key → 401, with key → returns `unknown`/`alive` proxy, does not return `dead`, no proxy available → 404 |
 | Gateway plugin | Mock Backend: 200/404/timeout |
-| Integration | Chạy uvicorn + gateway thật với DB temp, `curl -x` qua mock target server → assert IP đúng proxy |
+| Integration | Run real uvicorn + gateway with temp DB, `curl -x` via mock target server → assert IP matches proxy |
 
 ### Frontend (Vitest + Testing Library)
 
-- ProxyTable: render danh sách mock, filter theo status.
-- ImportDialog: submit text → gọi đúng API, hiện kết quả.
-- LoginPage: submit → gọi API, lưu token, redirect.
-- Auth guard: chưa login → redirect `/login`.
-- Mock API bằng MSW hoặc vi.mock axios. Không test styling thuần, không snapshot test.
+- ProxyTable: render mock list, filter by status.
+- ImportDialog: submit text → call correct API, display results.
+- LoginPage: submit → call API, save token, redirect.
+- Auth guard: unauthenticated → redirect `/login`.
+- Mock API using MSW or vi.mock axios. Do not test pure styling, no snapshot tests.
 
 ## 9. Definition of Done
 
-1. `uvicorn app.main:app` + `npm run dev` + gateway chạy đồng thời trên Windows.
-2. CLI `create-admin` tạo được tài khoản, đăng nhập được trên Dashboard.
-3. Import được danh sách proxy qua UI, hiện đúng bảng + stat cards.
-4. `curl -x http://127.0.0.1:8899 http://target` đi ra internet qua proxy trong pool (verify với proxy thật hoặc mock target).
-5. Request tự xoay IP giữa các proxy ở 2 request liên tiếp.
-6. Internal API từ chối khi không có key.
-7. Toàn bộ test backend + frontend pass (`pytest` + `npm test`).
-8. README cập nhật: bỏ banner WIP cho phần đã xong, tick roadmap "MVP".
+1. `uvicorn app.main:app` + `npm run dev` + gateway running concurrently on Windows.
+2. CLI `create-admin` can create an account, which can log into the Dashboard.
+3. Successfully import proxy list via UI, correctly displaying the table + stat cards.
+4. `curl -x http://127.0.0.1:8899 http://target` routes out to the internet through a proxy in the pool (verified with real proxy or mock target).
+5. Requests automatically rotate IP across proxies on consecutive requests.
+6. Internal API rejects requests without a key.
+7. All backend + frontend tests pass (`pytest` + `npm test`).
+8. README updated: remove WIP banner for completed sections, check off "MVP" on roadmap.
 
-## 10. Rủi ro đã nhận diện
+## 10. Identified Risks
 
-| Rủi ro | Xử lý |
+| Risk | Mitigation |
 |---|---|
-| proxy.py không inject `Proxy-Authorization` cho upstream | Verify sớm bằng test tích hợp; fallback: plugin tự thêm header |
-| `before_upstream_connection` không trả được 502 đẹp | Fallback: log + teardown; chấp nhận ở MVP, ghi chú |
-| SQLite lock khi nhiều thread gateway gọi đồng thời | WAL + busy_timeout 5000ms đã thiết kế sẵn |
+| proxy.py does not inject `Proxy-Authorization` for upstream | Verify early via integration tests; fallback: plugin manually adds header |
+| `before_upstream_connection` cannot return a clean 502 | Fallback: log + teardown; acceptable in MVP, noted accordingly |
+| SQLite lock when multiple gateway threads call concurrently | WAL + busy_timeout 5000ms already designed in |
 
-## 11. Ngoài phạm vi Phần 1
+## 11. Out of Scope for Part 1
 
-- Health check Celery (Phần 2), trang Settings.
-- Multi-tenant, API key per user, proxy-auth gateway (Phần 3).
-- Sticky session (Phần 4).
-- WebSocket realtime logs, RequestLog (Phần 5).
-- Docker Compose (Phần 6).
-- Hỗ trợ socks5 qua gateway.
+- Celery health check (Part 2), Settings page.
+- Multi-tenant, per-user API keys, gateway proxy-auth (Part 3).
+- Sticky session (Part 4).
+- WebSocket realtime logs, RequestLog (Part 5).
+- Docker Compose (Part 6).
+- socks5 support via gateway.
 - Alembic migrations.

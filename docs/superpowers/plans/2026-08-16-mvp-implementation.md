@@ -124,7 +124,7 @@ Thumbs.db
 # Database
 DATABASE_URL=sqlite:///./proxyhub.db
 
-# Redis (Cho Celery - Phần 2)
+# Redis (For Celery - Part 2)
 REDIS_URL=redis://localhost:6379/0
 
 # JWT Auth
@@ -132,7 +132,7 @@ SECRET_KEY=change_me_to_a_random_string
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
-# Celery (Phần 2)
+# Celery (Part 2)
 CELERY_BROKER_URL=redis://localhost:6379/1
 CELERY_RESULT_BACKEND=redis://localhost:6379/2
 

@@ -43,7 +43,7 @@ if not exist proxyhub.db (
     echo     venv\Scripts\python -m app.cli create-admin --username admin --email a@b.c --password ^<password^>
 )
 
-REM --- Doc GATEWAY_API_URL va INTERNAL_API_KEY tu .env (chịu được CRLF) ---
+REM --- Read GATEWAY_API_URL and INTERNAL_API_KEY from .env (CRLF-tolerant) ---
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$l=@(Get-Content .env | Where-Object {$_ -like 'INTERNAL_API_KEY=*'}); if($l){($l[0] -split '=',2)[1]} else {''}"`) do set "INTERNAL_API_KEY=%%v"
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$l=@(Get-Content .env | Where-Object {$_ -like 'GATEWAY_API_URL=*'}); if($l){($l[0] -split '=',2)[1]} else {'http://localhost:8000/internal/proxies'}"`) do set "GATEWAY_API_URL=%%v"
 

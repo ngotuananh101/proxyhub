@@ -44,8 +44,16 @@ const statusItems = [
   { label: 'Unknown', value: 'unknown' },
 ]
 
+const pageSizeItems = [
+  { label: '10', value: '10' },
+  { label: '20', value: '20' },
+  { label: '50', value: '50' },
+  { label: '100', value: '100' },
+]
+
 export default function ProxiesPage() {
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -60,13 +68,13 @@ export default function ProxiesPage() {
       await triggerCheckAll()
       toast.add({
         type: 'success',
-        title: 'Đã gửi yêu cầu kiểm tra sức khoẻ',
-        description: 'Kết quả sẽ cập nhật sau vài phút.',
+        title: 'Health check requested',
+        description: 'Results will update in a few minutes.',
       })
     } catch {
       toast.add({
         type: 'error',
-        title: 'Không thể gửi yêu cầu kiểm tra',
+        title: 'Failed to request health check',
       })
     } finally {
       setChecking(false)
@@ -74,10 +82,11 @@ export default function ProxiesPage() {
   }
 
   const { data, isPending } = useQuery({
-    queryKey: ['proxies', page, statusFilter, search],
+    queryKey: ['proxies', page, pageSize, statusFilter, search],
     queryFn: () =>
       fetchProxies({
         page,
+        size: pageSize,
         status: statusFilter === 'all' ? undefined : statusFilter,
         q: search || undefined,
       }),
@@ -95,13 +104,13 @@ export default function ProxiesPage() {
       next.delete(id)
       return next
     })
-    toast.add({ type: 'success', title: 'Đã xoá proxy' })
+    toast.add({ type: 'success', title: 'Proxy deleted' })
     invalidate()
   }
 
   const handleDeleteSelected = async () => {
     await deleteManyProxies([...selected])
-    toast.add({ type: 'success', title: `Đã xoá ${selected.size} proxy` })
+    toast.add({ type: 'success', title: `Deleted ${selected.size} proxies` })
     setSelected(new Set())
     invalidate()
   }
@@ -133,13 +142,13 @@ export default function ProxiesPage() {
         <div className="flex flex-col gap-0.5">
           <h1 className="text-xl font-semibold tracking-tight">Proxies</h1>
           <p className="text-xs text-muted-foreground">
-            Quản lý pool proxy của bạn
+            Manage your proxy pool
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleCheckAll} disabled={checking}>
             <RefreshCwIcon data-icon="inline-start" />
-            Kiểm tra ngay
+            Check now
           </Button>
           <Button onClick={() => setShowForm(true)}>
             <PlusIcon data-icon="inline-start" />
@@ -202,9 +211,9 @@ export default function ProxiesPage() {
           <EmptyMedia variant="icon">
             <SearchIcon />
           </EmptyMedia>
-          <EmptyTitle>Không có proxy nào</EmptyTitle>
+          <EmptyTitle>No proxies found</EmptyTitle>
           <EmptyDescription>
-            Thêm proxy thủ công hoặc import hàng loạt để bắt đầu.
+            Add a proxy manually or import a batch to get started.
           </EmptyDescription>
         </Empty>
       ) : (
@@ -216,29 +225,56 @@ export default function ProxiesPage() {
             onToggleSelectAll={toggleSelectAll}
             onDelete={handleDelete}
           />
-          <div className="flex shrink-0 items-center justify-between text-sm text-muted-foreground">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
             <span>
-              Page {data.page} — {data.total} total
+              Page {data.page}/{Math.max(1, Math.ceil(data.total / data.size))} —{' '}
+              {data.total} records total
             </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
-              >
-                <ChevronLeftIcon data-icon="inline-start" />
-                Prev
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page * data.size >= data.total}
-                onClick={() => setPage(page + 1)}
-              >
-                Next
-                <ChevronRightIcon data-icon="inline-end" />
-              </Button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span>Rows per page</span>
+                <Select
+                  items={pageSizeItems}
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value ?? '20'))
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {pageSizeItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeftIcon data-icon="inline-start" />
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page * data.size >= data.total}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                  <ChevronRightIcon data-icon="inline-end" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>

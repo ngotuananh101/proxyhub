@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const cards = [
-  { key: 'total', label: 'Tổng proxy', icon: GlobeIcon },
+  { key: 'total', label: 'Total proxies', icon: GlobeIcon },
   { key: 'alive', label: 'Alive', icon: CircleCheckIcon },
   { key: 'dead', label: 'Dead', icon: CircleXIcon },
   { key: 'unknown', label: 'Unknown', icon: CircleHelpIcon },

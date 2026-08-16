@@ -1,44 +1,44 @@
-# 🔄 ProxyHub: Hệ thống Quản lý & Xoay Proxy Thông minh
+# 🔄 ProxyHub: Smart Proxy Management & Rotation System
 
-> ✅ **Trạng thái:** Phiên bản MVP đã hoàn thành — bao gồm đầy đủ Backend (FastAPI), Frontend Dashboard (React) và Proxy Gateway (`proxy.py`). Các tính năng tiếp theo đang được phát triển theo [Roadmap](#-lộ-trình-phát-triển-roadmap).
+> ✅ **Status:** MVP complete — includes the full Backend (FastAPI), Frontend Dashboard (React), and Proxy Gateway (`proxy.py`). Further features are being developed according to the [Roadmap](#️-roadmap).
 
-ProxyHub là một ứng dụng full-stack mã nguồn mở giúp quản lý, kiểm tra sức khoẻ (health check) và tự động xoay (rotate) hàng loạt proxy. Hệ thống cung cấp một Dashboard trực quan để quản lý pool proxy và một API Gateway hiệu năng cao để forward traffic.
+ProxyHub is an open-source full-stack application for managing, health-checking, and automatically rotating a pool of proxies. It provides an intuitive Dashboard for managing the proxy pool and a high-performance API Gateway for forwarding traffic.
 
 ## 📸 Screenshots
 
-> _(Sẽ bổ sung khi Dashboard hoàn thiện)_
+> _(To be added once the Dashboard is finalized)_
 
-## 📑 Mục lục
+## 📑 Table of Contents
 
-- [✨ Tính năng chính](#-tính-năng-chính)
-- [🏗️ Kiến trúc Hệ thống](#️-kiến-trúc-hệ-thống)
-- [🛠️ Công nghệ sử dụng](#️-công-nghệ-sử-dụng)
-- [📋 Yêu cầu hệ thống](#-yêu-cầu-hệ-thống-prerequisites)
-- [🚀 Cài đặt và Chạy thử](#-cài-đặt-và-chạy-thử-development)
-- [⚙️ Cấu hình](#️-cấu-hình-environment-variables)
-- [👤 Tạo tài khoản đầu tiên](#-tạo-tài-khoản-đầu-tiên)
-- [📖 Cách sử dụng](#-cách-sử-dụng)
-- [🧠 Logic xoay Proxy](#-logic-xoay-proxy-gateway-plugin)
-- [🔒 Lưu ý bảo mật](#-lưu-ý-bảo-mật)
+- [✨ Key Features](#-key-features)
+- [🏗️ System Architecture](#️-system-architecture)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [📋 Prerequisites](#-prerequisites)
+- [🚀 Installation & Development](#-installation--development)
+- [⚙️ Configuration](#️-configuration-environment-variables)
+- [👤 Creating the First Account](#-creating-the-first-account)
+- [📖 Usage](#-usage)
+- [🧠 Proxy Rotation Logic](#-proxy-rotation-logic-gateway-plugin)
+- [🔒 Security Notes](#-security-notes)
 - [🩹 Troubleshooting](#-troubleshooting)
-- [🗺️ Roadmap](#️-lộ-trình-phát-triển-roadmap)
-- [🤝 Đóng góp](#-đóng-góp)
+- [🗺️ Roadmap](#️-roadmap)
+- [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 
-## ✨ Tính năng chính
+## ✨ Key Features
 
-Các tính năng mục tiêu của dự án:
+Target features of the project:
 
-- **🎯 Gateway xoay động:** Sử dụng **`proxy.py`** làm Gateway, tự động chọn proxy sống từ pool cho mỗi request.
-- **🩺 Health Check Tự động:** Tích hợp **`Celery`** chạy nền để định kỳ kiểm tra độ trễ và tỷ lệ thành công của từng proxy.
-- **📊 Dashboard Toàn diện:** Giao diện **`React`** để quản lý proxy, xem thống kê và log request theo thời gian thực.
-- **🗂️ Quản lý Pool/Nhóm:** Gom nhóm proxy theo quốc gia, ISP hoặc thẻ (tags) tùy chỉnh.
-- **⚡ Cơ sở dữ liệu Nhẹ:** Sử dụng **`SQLite`** (đọc/ghi qua WAL mode), không cần cài đặt DB Server phức tạp.
-- **🔒 Xác thực & Bảo mật:** Đăng nhập JWT, quản lý API token cho client.
+- **🎯 Dynamic rotation gateway:** Uses **`proxy.py`** as the Gateway, automatically picking a live proxy from the pool for each request.
+- **🩺 Automatic health checks:** Integrates **`Celery`** running in the background to periodically check the latency and success rate of each proxy.
+- **📊 Comprehensive dashboard:** A **`React`** UI for managing proxies, viewing statistics, and request logs in real time.
+- **🗂️ Pool/group management:** Group proxies by country, ISP, or custom tags.
+- **⚡ Lightweight database:** Uses **`SQLite`** (read/write via WAL mode), no complex DB server setup required.
+- **🔒 Authentication & security:** JWT login, API token management for clients.
 
-> Tiến độ thực tế của từng tính năng được theo dõi tại phần [Roadmap](#️-lộ-trình-phát-triển-roadmap).
+> Actual progress of each feature is tracked in the [Roadmap](#️-roadmap) section.
 
-## 🏗️ Kiến trúc Hệ thống
+## 🏗️ System Architecture
 
 ```mermaid
 flowchart LR
@@ -57,57 +57,57 @@ flowchart LR
     CB --> BR
 ```
 
-### Bảng cổng dịch vụ (Ports)
+### Service Ports
 
-| Dịch vụ              | Cổng  | Ghi chú                                    |
+| Service              | Port  | Notes                                      |
 | -------------------- | ----- | ------------------------------------------ |
-| FastAPI Backend      | 8000  | REST API + Swagger docs tại `/docs`        |
+| FastAPI Backend      | 8000  | REST API + Swagger docs at `/docs`         |
 | React Dashboard      | 5173  | Vite dev server                            |
-| proxy.py Gateway     | 8899  | Cổng proxy để client trỏ vào               |
-| Redis                | 6379  | Broker/backend cho Celery                  |
+| proxy.py Gateway     | 8899  | Proxy port for clients to connect to       |
+| Redis                | 6379  | Broker/backend for Celery                  |
 
-### Luồng hoạt động chính
+### Main Flow
 
-1. Client/Scraper gửi request tới **`proxy.py Gateway :8899`**.
-2. Gateway gọi **FastAPI Backend :8000** để lấy một proxy đang hoạt động.
-3. Gateway forward traffic tới **Target Website** thông qua proxy được chọn.
-4. **React Dashboard :5173** giao tiếp với Backend thông qua REST API/WebSocket.
-5. **Celery Beat** định kỳ kích hoạt **Celery Worker** để kiểm tra proxy.
-6. Worker cập nhật trạng thái, latency và thông tin health check vào **SQLite**.
-7. **Redis** được sử dụng làm broker/backend cho các tác vụ Celery.
+1. The Client/Scraper sends a request to the **`proxy.py Gateway :8899`**.
+2. The Gateway calls the **FastAPI Backend :8000** to get a working proxy.
+3. The Gateway forwards traffic to the **Target Website** through the selected proxy.
+4. The **React Dashboard :5173** communicates with the Backend via REST API/WebSocket.
+5. **Celery Beat** periodically triggers the **Celery Worker** to check proxies.
+6. The Worker updates status, latency, and health check info into **SQLite**.
+7. **Redis** is used as the broker/backend for Celery tasks.
 
-## 🛠️ Công nghệ sử dụng
+## 🛠️ Tech Stack
 
-| Thành phần      | Công nghệ                          | Mô tả                                  |
-| --------------- | ---------------------------------- | -------------------------------------- |
-| **Frontend**    | React, Vite, TailwindCSS, ShadcnUI | Giao diện quản lý nhanh, hiện đại      |
-| **Backend API** | FastAPI, SQLModel, Pydantic        | REST API hiệu năng cao, tự sinh docs   |
-| **Gateway**     | proxy.py                           | Forward proxy server với custom plugin |
-| **Task Queue**  | Celery, Redis                      | Chạy background job health check       |
-| **Database**    | SQLite (WAL mode)                  | Lưu trữ proxy, logs, users             |
+| Component       | Technology                         | Description                              |
+| --------------- | ---------------------------------- | ---------------------------------------- |
+| **Frontend**    | React, Vite, TailwindCSS, ShadcnUI | Fast, modern management UI               |
+| **Backend API** | FastAPI, SQLModel, Pydantic        | High-performance REST API, auto docs     |
+| **Gateway**     | proxy.py                           | Forward proxy server with custom plugin  |
+| **Task Queue**  | Celery, Redis                      | Background health check jobs             |
+| **Database**    | SQLite (WAL mode)                  | Stores proxies, logs, users              |
 
-## 📋 Yêu cầu hệ thống (Prerequisites)
+## 📋 Prerequisites
 
-Trước khi bắt đầu, đảm bảo máy tính của bạn đã cài đặt:
+Before starting, make sure your machine has:
 
 - [**Python**](https://www.python.org/downloads/) >= 3.10
 - [**Node.js**](https://nodejs.org/) >= 18.x
-- [**Redis**](https://redis.io/docs/getting-started/installation/) (Dùng làm message broker cho Celery)
+- [**Redis**](https://redis.io/docs/getting-started/installation/) (used as the message broker for Celery)
 
-> ⚠️ **Lưu ý cho Windows:** Celery **không hỗ trợ chính thức trên Windows**. Khi chạy worker/beat trên Windows, cần dùng pool thay thế (`--pool=solo` hoặc `--pool=gevent`) — xem hướng dẫn ở bước chạy Celery bên dưới. Cách ổn định nhất là chạy qua **WSL2** hoặc **Docker**.
+> ⚠️ **Windows note:** Celery is **not officially supported on Windows**. When running worker/beat on Windows, an alternative pool is required (`--pool=solo` or `--pool=threads`) — see the Celery run instructions below. The most stable option is to run via **WSL2** or **Docker**.
 
-## 🚀 Cài đặt và Chạy thử (Development)
+## 🚀 Installation & Development
 
-### 1. Clone repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/ngotuananh101/proxyhub.git
 cd proxyhub
 ```
 
-### 2. Cài đặt Backend (FastAPI + Celery)
+### 2. Backend Setup (FastAPI + Celery)
 
-#### Tạo và kích hoạt môi trường ảo
+#### Create and activate a virtual environment
 
 **Linux/macOS:**
 
@@ -123,33 +123,33 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-#### Cài đặt dependencies
+#### Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-#### Tạo file cấu hình
+#### Create the config file
 
 ```bash
 cp .env.example .env
 ```
 
-> Trên Windows có thể dùng `copy .env.example .env` trong Command Prompt. Nội dung các biến môi trường xem tại phần [Cấu hình](#️-cấu-hình-environment-variables).
+> On Windows you can use `copy .env.example .env` in Command Prompt. See the [Configuration](#️-configuration-environment-variables) section for the environment variables.
 
-#### Chạy API Server (Terminal 1)
+#### Run the API Server (Terminal 1)
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Truy cập API Docs tại: **`http://localhost:8000/docs`**
+API Docs available at: **`http://localhost:8000/docs`**
 
-> Khi develop chỉ nên bind `127.0.0.1`. Chỉ dùng `0.0.0.0` khi bạn hiểu rõ rủi ro và đã cấu hình firewall — xem phần [Lưu ý bảo mật](#-lưu-ý-bảo-mật).
+> During development you should only bind `127.0.0.1`. Only use `0.0.0.0` when you understand the risks and have configured a firewall — see [Security Notes](#-security-notes).
 
-#### Chạy Celery Worker (Terminal 2)
+#### Run the Celery Worker (Terminal 2)
 
-Đảm bảo Redis đang chạy ở `localhost:6379`.
+Make sure Redis is running at `localhost:6379`.
 
 **Linux/macOS:**
 
@@ -157,19 +157,19 @@ Truy cập API Docs tại: **`http://localhost:8000/docs`**
 celery -A app.worker.celery_app worker --loglevel=info
 ```
 
-**Windows** (Celery không hỗ trợ chính thức, cần chỉ định pool):
+**Windows** (Celery is not officially supported, a pool must be specified):
 
 ```bash
 celery -A app.worker.celery_app worker --loglevel=info --pool=threads --concurrency=8
 ```
 
-#### Chạy Celery Beat Scheduler (Terminal 3)
+#### Run the Celery Beat Scheduler (Terminal 3)
 
 ```bash
 celery -A app.worker.celery_app beat --loglevel=info
 ```
 
-### 3. Cài đặt Frontend (React)
+### 3. Frontend Setup (React)
 
 ```bash
 cd frontend
@@ -177,52 +177,52 @@ npm install
 cp .env.example .env
 ```
 
-File `.env` của frontend cần tối thiểu biến trỏ về Backend:
+The frontend `.env` needs at minimum the variable pointing to the Backend:
 
 ```env
 VITE_API_URL=http://localhost:8000
 VITE_WS_URL=ws://localhost:8000
 ```
 
-#### Chạy Dashboard (Terminal 4)
+#### Run the Dashboard (Terminal 4)
 
 ```bash
 npm run dev
 ```
 
-Truy cập Dashboard tại: **`http://localhost:5173`**
+Dashboard available at: **`http://localhost:5173`**
 
-### 4. Chạy Proxy Gateway (proxy.py)
+### 4. Run the Proxy Gateway (proxy.py)
 
-Gateway sử dụng một plugin custom để gọi API lấy proxy và forward traffic.
+The Gateway uses a custom plugin to call the API for a proxy and forward traffic.
 
-> 💡 **Chạy nhanh cả hệ thống:** thay vì mở từng terminal, chạy `start-dev.bat` ở thư mục gốc — script dùng `npx concurrently` chạy Backend, Frontend, Gateway, Celery Worker và Celery Beat (kèm biến môi trường) trong **một cửa sổ duy nhất**, log được tô màu theo từng tiến trình. Bấm `Ctrl+C` để dừng tất cả.
+> 💡 **Quick-start the whole system:** instead of opening each terminal, run `start-dev.bat` in the project root — the script uses `npx concurrently` to run the Backend, Frontend, Gateway, Celery Worker, and Celery Beat (with environment variables) in **a single window**, with color-coded logs per process. Press `Ctrl+C` to stop everything.
 
-#### Chạy Gateway (Terminal 5)
+#### Run the Gateway (Terminal 5)
 
-Plugin đọc `GATEWAY_API_URL` và `INTERNAL_API_KEY` trực tiếp từ biến môi trường (không đọc file `.env`), nên phải truyền kèm khi chạy. `INTERNAL_API_KEY` phải **trùng** giá trị trong `.env` của Backend.
+The plugin reads `GATEWAY_API_URL` and `INTERNAL_API_KEY` directly from environment variables (it does not read the `.env` file), so they must be passed when running. `INTERNAL_API_KEY` must **match** the value in the Backend's `.env`.
 
 **Git Bash / Linux / macOS:**
 
 ```bash
 GATEWAY_API_URL=http://localhost:8000/internal/proxies \
-INTERNAL_API_KEY=<key-trong-.env> \
+INTERNAL_API_KEY=<key-from-.env> \
 python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin \
     --hostname 127.0.0.1 \
     --port 8899
 ```
 
-> ⚠️ Dùng `python -m proxy` (trong venv) thay vì lệnh `proxy`: console script `proxy.exe` không thêm thư mục hiện tại vào `sys.path` nên sẽ báo lỗi `... is not resolvable as a plugin class`.
+> ⚠️ Use `python -m proxy` (inside the venv) instead of the `proxy` command: the `proxy.exe` console script does not add the current directory to `sys.path`, so it fails with `... is not resolvable as a plugin class`.
 
-## ⚙️ Cấu hình (Environment Variables)
+## ⚙️ Configuration (Environment Variables)
 
-File **`.env`** ở thư mục gốc gồm các biến sau:
+The **`.env`** file in the project root contains the following variables:
 
 ```env
 # Database
 DATABASE_URL=sqlite:///./proxyhub.db
 
-# Redis (Cho Celery)
+# Redis (for Celery)
 REDIS_URL=redis://127.0.0.1:6379/0
 
 # JWT Auth
@@ -234,105 +234,105 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 CELERY_BROKER_URL=redis://127.0.0.1:6379/1
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/2
 HEALTH_CHECK_URL=https://api.ipify.org
-# Timeout mỗi lần check (giây)
+# Timeout per check (seconds)
 HEALTH_CHECK_TIMEOUT=6
-# Chu kỳ health check tự động (giây), mặc định 300 = 5 phút
+# Automatic health check interval (seconds), default 300 = 5 minutes
 HEALTH_CHECK_INTERVAL=300
-# Số proxy được check song song cùng lúc
+# Number of proxies checked concurrently
 HEALTH_CHECK_CONCURRENCY=50
 
 # Gateway
 GATEWAY_API_URL=http://localhost:8000/internal/proxies
-# Key nội bộ để Gateway xác thực khi gọi internal API của Backend
+# Internal key for the Gateway to authenticate against the Backend's internal API
 INTERNAL_API_KEY=change_me_internal_key
 ```
 
-> **Lưu ý bảo mật:** Không commit file `.env` chứa `SECRET_KEY` hoặc thông tin nhạy cảm lên Git repository.
+> **Security note:** Never commit a `.env` file containing `SECRET_KEY` or other sensitive information to a Git repository.
 
-## 👤 Tạo tài khoản đầu tiên
+## 👤 Creating the First Account
 
-Dashboard yêu cầu đăng nhập JWT. Sau khi chạy Backend lần đầu, tạo tài khoản admin qua CLI:
+The Dashboard requires JWT login. After running the Backend for the first time, create an admin account via the CLI:
 
 ```bash
-python -m app.cli create-admin --username admin --email admin@example.com --password <password-cua-ban>
+python -m app.cli create-admin --username admin --email admin@example.com --password <your-password>
 ```
 
-Sau đó đăng nhập tại **`http://localhost:5173`**.
+Then sign in at **`http://localhost:5173`**.
 
-## 📖 Cách sử dụng
+## 📖 Usage
 
-### 1. Thêm Proxy vào Pool
+### 1. Add Proxies to the Pool
 
-Vào Dashboard → **`Proxies`** → **`Import`**.
+Go to Dashboard → **`Proxies`** → **`Import`**.
 
-Hỗ trợ nhập text dạng:
+Supports pasting text in the form:
 
 ```text
 http://user:pass@1.2.3.4:8080
 socks5://5.6.7.8:1080
 ```
 
-### 2. Cấu hình phần mềm của bạn
+### 2. Configure your software
 
-Trỏ phần mềm scraping/automation của bạn vào Gateway. ProxyHub sẽ tự động xoay IP cho mỗi request:
+Point your scraping/automation software at the Gateway. ProxyHub automatically rotates the IP for each request:
 
 ```bash
 curl -x http://localhost:8899 http://httpbin.org/ip
 ```
 
-Kết quả trả về sẽ là IP của proxy trong pool và IP này sẽ thay đổi ở request tiếp theo.
+The response will be the IP of a proxy from the pool, and it will change on the next request.
 
 ### 3. Health Check
 
-Celery worker sẽ tự động kiểm tra định kỳ toàn bộ proxy trong database thông qua `HEALTH_CHECK_URL`. Chu kỳ mặc định là **mỗi 5 phút** (do Celery Beat kích hoạt), thay đổi được qua biến `HEALTH_CHECK_INTERVAL` (đơn vị giây) trong `.env`. Toàn bộ proxy được kiểm tra **song song** trong một task duy nhất — số proxy chạy đồng thời giới hạn bởi `HEALTH_CHECK_CONCURRENCY` (mặc định 50), mỗi lần check timeout sau `HEALTH_CHECK_TIMEOUT` giây (mặc định 6). Nhờ đó một chu kỳ với vài trăm proxy chỉ mất vài chục giây. Chỉ các proxy ở trạng thái `alive` hoặc `unknown` được kiểm tra — proxy đã `dead` bị bỏ qua để tiết kiệm thời gian (muốn kiểm tra lại chúng, xoá và import lại proxy đó). Mỗi proxy được đánh dấu trạng thái `alive` hoặc `dead` kèm theo thời gian phản hồi `latency_ms` và thời điểm `last_checked_at`.
+The Celery worker automatically checks all proxies in the database periodically via `HEALTH_CHECK_URL`. The default cycle is **every 5 minutes** (triggered by Celery Beat), configurable through the `HEALTH_CHECK_INTERVAL` variable (in seconds) in `.env`. All proxies are checked **in parallel** within a single task — the number of concurrent checks is limited by `HEALTH_CHECK_CONCURRENCY` (default 50), and each check times out after `HEALTH_CHECK_TIMEOUT` seconds (default 6). As a result, a cycle with a few hundred proxies takes only tens of seconds. Only proxies in the `alive` or `unknown` state are checked — `dead` proxies are skipped to save time (to re-check them, delete and re-import that proxy). Each proxy is marked `alive` or `dead` along with its response time `latency_ms` and the `last_checked_at` timestamp.
 
-Gateway chỉ lựa chọn các proxy đang có trạng thái `alive` để forward traffic.
+The Gateway only selects proxies in the `alive` state to forward traffic.
 
-Ngoài chu kỳ tự động, bạn có thể kích hoạt kiểm tra thủ công bất cứ lúc nào:
-- Bấm nút **"Kiểm tra ngay"** trên React Dashboard (trang Danh sách Proxy).
-- Hoặc gọi API: `POST /api/proxies/check-all`.
+Besides the automatic cycle, you can trigger a manual check at any time:
+- Click the **"Check now"** button on the React Dashboard (Proxy list page).
+- Or call the API: `POST /api/proxies/check-all`.
 
-## 🧠 Logic xoay Proxy (Gateway Plugin)
+## 🧠 Proxy Rotation Logic (Gateway Plugin)
 
-Plugin **`RotateProxyPlugin`** kế thừa từ **`HttpProxyBasePlugin`** của `proxy.py`. Mỗi khi có request tới:
+The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`**. For each incoming request:
 
-1. Plugin gọi tới internal API **`GET /internal/proxies?strategy=random`** của FastAPI (kèm header `X-Internal-Key`).
-2. FastAPI query SQLite để lấy một proxy đang **`alive`** và trả về URL.
-3. Plugin thiết lập kết nối upstream tới proxy đó.
-4. Traffic được forward theo luồng **client → upstream proxy → target**.
+1. The plugin calls the FastAPI internal API **`GET /internal/proxies?strategy=random`** (with the `X-Internal-Key` header).
+2. FastAPI queries SQLite to get an **`alive`** proxy and returns its URL.
+3. The plugin establishes the upstream connection to that proxy.
+4. Traffic is forwarded along the path **client → upstream proxy → target**.
 
-> **Tối ưu hiệu năng:** FastAPI có thể cache danh sách proxy `alive` trong Redis và cập nhật mỗi 10 giây, giúp Gateway không phải query DB liên tục.
+> **Performance optimization:** FastAPI can cache the list of `alive` proxies in Redis and refresh it every 10 seconds, so the Gateway doesn't have to query the DB continuously.
 
-## 🔒 Lưu ý bảo mật
+## 🔒 Security Notes
 
-- **Bind localhost khi dev:** Backend và Gateway mặc định chỉ nên lắng nghe `127.0.0.1`. Chỉ expose `0.0.0.0` khi deploy sau reverse proxy/firewall.
-- **Internal API phải có key:** Endpoint `/internal/proxies` trả về URL proxy **kèm credential (user:pass)**, nên bắt buộc xác thực bằng `INTERNAL_API_KEY` (header `X-Internal-Key`). Không expose endpoint này ra internet.
-- **Đổi `SECRET_KEY`:** Luôn tạo `SECRET_KEY` ngẫu nhiên, không dùng giá trị mặc định trong `.env.example`.
-- **Không commit `.env`:** Đảm bảo `.env` nằm trong `.gitignore`.
+- **Bind to localhost during development:** The Backend and Gateway should only listen on `127.0.0.1` by default. Only expose `0.0.0.0` when deploying behind a reverse proxy/firewall.
+- **The internal API requires a key:** The `/internal/proxies` endpoint returns proxy URLs **including credentials (user:pass)**, so it must be authenticated with `INTERNAL_API_KEY` (header `X-Internal-Key`). Never expose this endpoint to the internet.
+- **Change `SECRET_KEY`:** Always generate a random `SECRET_KEY`; never use the default value from `.env.example`.
+- **Never commit `.env`:** Make sure `.env` is listed in `.gitignore`.
 
 ## 🩹 Troubleshooting
 
-| Vấn đề                                        | Nguyên nhân / Cách xử lý                                                                                                     |
+| Problem                                       | Cause / Fix                                                                                                                  |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Celery worker crash trên Windows              | Celery không hỗ trợ Windows với pool mặc định. Chạy thêm `--pool=threads --concurrency=8` (hoặc `--pool=solo`), tốt nhất dùng WSL2/Docker. |
-| `ConnectionError: redis://127.0.0.1:6379`     | Redis chưa chạy. Khởi động Redis (`redis-server`) hoặc kiểm tra lại `REDIS_URL`.                                             |
-| Port 8899/8000 đã được sử dụng                | Trùng port với ứng dụng khác. Đổi port bằng flag `--port` hoặc kiểm tra process đang chiếm port.                             |
-| `database is locked` (SQLite)                 | FastAPI và Celery worker ghi đồng thời. Đảm bảo đã bật **WAL mode** và set `busy_timeout` (mặc định trong cấu hình DB).      |
-| Gateway trả lỗi nhưng Dashboard vẫn hiện proxy alive | Health check chưa chạy kịp chu kỳ. Kiểm tra log Celery Beat/Worker, hoặc trigger health check thủ công từ Dashboard.  |
+| Celery worker crashes on Windows              | Celery does not support Windows with the default pool. Add `--pool=threads --concurrency=8` (or `--pool=solo`); best to use WSL2/Docker. |
+| `ConnectionError: redis://127.0.0.1:6379`     | Redis is not running. Start Redis (`redis-server`) or double-check `REDIS_URL`.                                              |
+| Port 8899/8000 already in use                 | Port conflict with another application. Change the port with the `--port` flag or check which process holds the port.        |
+| `database is locked` (SQLite)                 | FastAPI and the Celery worker writing concurrently. Make sure **WAL mode** is enabled and `busy_timeout` is set (default in the DB config). |
+| Gateway errors but Dashboard still shows proxies alive | Health check hasn't completed a cycle yet. Check the Celery Beat/Worker logs, or trigger a manual health check from the Dashboard. |
 
-## 🗺️ Lộ trình phát triển (Roadmap)
+## 🗺️ Roadmap
 
-- [x] MVP: CRUD Proxy, Manual Rotate, SQLite
-- [x] Celery Health Check tự động
-- [ ] Multi-tenant: Gán User/API Key vào Pool riêng biệt
-- [ ] Sticky Session: Giữ nguyên IP cho một `session_id` trong N phút
-- [ ] WebSocket Realtime Logs: Xem log request chạy trên Dashboard
-- [ ] Docker Compose: Một lệnh **`docker compose up`** chạy toàn bộ hệ thống
+- [x] MVP: Proxy CRUD, Manual Rotate, SQLite
+- [x] Automatic Celery Health Check
+- [ ] Multi-tenant: Assign Users/API Keys to separate Pools
+- [ ] Sticky Session: Keep the same IP for a `session_id` for N minutes
+- [ ] WebSocket Realtime Logs: View request logs live on the Dashboard
+- [ ] Docker Compose: A single **`docker compose up`** command to run the whole system
 
-## 🤝 Đóng góp
+## 🤝 Contributing
 
-Mọi pull request đều được chào đón! Với các thay đổi lớn, hãy mở issue trước để thảo luận về hướng thay đổi.
+All pull requests are welcome! For significant changes, please open an issue first to discuss the direction.
 
 ## 📄 License
 
-Phân phối theo giấy phép MIT. Xem file **`LICENSE`** để biết thêm chi tiết.
+Distributed under the MIT License. See the **`LICENSE`** file for details.

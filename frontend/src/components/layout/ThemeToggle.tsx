@@ -31,13 +31,13 @@ export function ThemeToggle() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={<Button variant="ghost" size="icon" className="size-8" />}
-        aria-label="Đổi giao diện"
+        aria-label="Toggle theme"
       >
         <Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Giao diện</DropdownMenuLabel>
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
             {themeOptions.map((option) => (
               <DropdownMenuRadioItem key={option.value} value={option.value}>

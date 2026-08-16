@@ -41,12 +41,12 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
       onImported()
       toast.add({
         type: 'success',
-        title: `Đã import ${res.imported} proxy`,
+        title: `Imported ${res.imported} proxies`,
         description:
-          res.duplicates > 0 ? `${res.duplicates} trùng lặp` : undefined,
+          res.duplicates > 0 ? `${res.duplicates} duplicates` : undefined,
       })
     } catch {
-      toast.add({ type: 'error', title: 'Import thất bại' })
+      toast.add({ type: 'error', title: 'Import failed' })
     } finally {
       setLoading(false)
     }
@@ -58,7 +58,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
         <DialogHeader>
           <DialogTitle>Import Proxies</DialogTitle>
           <DialogDescription>
-            Nhập danh sách proxy, mỗi dòng một proxy.
+            Enter the proxy list, one proxy per line.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>

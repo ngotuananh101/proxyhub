@@ -49,9 +49,9 @@ function ProfileForm() {
     try {
       await updateMe({ username, email: email || null })
       queryClient.invalidateQueries({ queryKey: ['me'] })
-      toast.add({ type: 'success', title: 'Đã cập nhật thông tin' })
+      toast.add({ type: 'success', title: 'Profile updated' })
     } catch (err) {
-      setError(errorDetail(err, 'Cập nhật thất bại'))
+      setError(errorDetail(err, 'Update failed'))
     } finally {
       setSaving(false)
     }
@@ -60,9 +60,9 @@ function ProfileForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Thông tin tài khoản</CardTitle>
+        <CardTitle>Account Information</CardTitle>
         <CardDescription>
-          Cập nhật username và email của bạn.
+          Update your username and email.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
@@ -94,7 +94,7 @@ function ProfileForm() {
         <CardFooter className="justify-end">
           <Button type="submit" disabled={saving}>
             {saving && <Spinner data-icon="inline-start" />}
-            Lưu thay đổi
+            Save Changes
           </Button>
         </CardFooter>
       </form>
@@ -113,7 +113,7 @@ function PasswordForm() {
     e.preventDefault()
     setError('')
     if (newPassword !== confirmPassword) {
-      setError('Mật khẩu xác nhận không khớp')
+      setError('Passwords do not match')
       return
     }
     setSaving(true)
@@ -125,9 +125,9 @@ function PasswordForm() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      toast.add({ type: 'success', title: 'Đã đổi mật khẩu' })
+      toast.add({ type: 'success', title: 'Password changed' })
     } catch (err) {
-      setError(errorDetail(err, 'Đổi mật khẩu thất bại'))
+      setError(errorDetail(err, 'Failed to change password'))
     } finally {
       setSaving(false)
     }
@@ -136,16 +136,16 @@ function PasswordForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Đổi mật khẩu</CardTitle>
+        <CardTitle>Change Password</CardTitle>
         <CardDescription>
-          Mật khẩu mới phải có ít nhất 8 ký tự.
+          New password must be at least 8 characters.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
         <CardContent>
           <FieldGroup className='gap-4'>
             <Field>
-              <FieldLabel htmlFor="current-password">Mật khẩu hiện tại</FieldLabel>
+              <FieldLabel htmlFor="current-password">Current password</FieldLabel>
               <Input
                 id="current-password"
                 type="password"
@@ -156,7 +156,7 @@ function PasswordForm() {
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="new-password">Mật khẩu mới</FieldLabel>
+              <FieldLabel htmlFor="new-password">New password</FieldLabel>
               <Input
                 id="new-password"
                 type="password"
@@ -169,7 +169,7 @@ function PasswordForm() {
             </Field>
             <Field data-invalid={!!error}>
               <FieldLabel htmlFor="confirm-password">
-                Xác nhận mật khẩu mới
+                Confirm new password
               </FieldLabel>
               <Input
                 id="confirm-password"
@@ -188,7 +188,7 @@ function PasswordForm() {
         <CardFooter className="justify-end">
           <Button type="submit" disabled={saving}>
             {saving && <Spinner data-icon="inline-start" />}
-            Đổi mật khẩu
+            Change Password
           </Button>
         </CardFooter>
       </form>
@@ -204,13 +204,13 @@ export default function ProfilePage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
         <p className="text-sm text-muted-foreground">
-          Quản lý thông tin tài khoản của bạn.
+          Manage your account information.
         </p>
       </div>
 
       {user && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Đăng nhập với tư cách</span>
+          <span className="text-muted-foreground">Signed in as</span>
           <Badge variant="secondary">{user.username}</Badge>
           {user.is_admin && <Badge>Admin</Badge>}
         </div>

@@ -47,14 +47,14 @@ export default function LoginPage() {
           </div>
           <h1 className="text-xl font-semibold">ProxyHub</h1>
           <p className="text-sm text-muted-foreground">
-            Hệ thống quản lý &amp; xoay proxy
+            Proxy management &amp; rotation system
           </p>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Đăng nhập</CardTitle>
+            <CardTitle>Sign In</CardTitle>
             <CardDescription>
-              Đăng nhập để quản lý pool proxy của bạn
+              Sign in to manage your proxy pool
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -55,7 +55,7 @@ class TestCheckProxy:
 
     @pytest.mark.anyio
     async def test_any_http_response_counts_as_alive(self):
-        # Proxy hoạt động = có response HTTP, kể cả 403/500 từ target
+        # A working proxy = any HTTP response, even 403/500 from the target
         response = MagicMock(spec=httpx.Response)
         response.status_code = 403
         with patch("app.services.health_service.httpx.AsyncClient") as mock_client:

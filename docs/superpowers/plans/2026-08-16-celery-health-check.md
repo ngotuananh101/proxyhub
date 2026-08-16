@@ -1,26 +1,26 @@
-# Celery Health Check (Phần 2) Implementation Plan
+# Celery Health Check (Part 2) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Tự động kiểm tra sức khoẻ pool proxy mỗi 5 phút bằng Celery + Redis, cập nhật `status`/`latency_ms`/`last_checked_at`, thêm nút "Kiểm tra ngay" trên Dashboard, và gateway chỉ chọn proxy `alive`.
+**Goal:** Automatically check proxy pool health every 5 minutes using Celery + Redis, update `status`/`latency_ms`/`last_checked_at`, add a "Check now" button on the Dashboard, and ensure the gateway only selects `alive` proxies.
 
-**Architecture:** Celery Beat gọi task `check_all_proxies` mỗi 300s → fan-out mỗi proxy một task `check_proxy` → gọi `health_service.check_proxy()` (httpx GET qua proxy) → ghi kết quả vào SQLite. Endpoint `POST /api/proxies/check-all` (JWT) dispatch cùng task để trigger thủ công.
+**Architecture:** Celery Beat calls task `check_all_proxies` every 300s → fan-out one `check_proxy` task per proxy → calls `health_service.check_proxy()` (httpx GET through proxy) → writes results to SQLite. Endpoint `POST /api/proxies/check-all` (JWT) dispatches the same task for manual triggers.
 
-**Tech Stack:** Celery ≥5.4, redis-py ≥5.0, httpx (đã có), SQLModel, FastAPI, React + TanStack Query + shadcn/ui.
+**Tech Stack:** Celery ≥5.4, redis-py ≥5.0, httpx (existing), SQLModel, FastAPI, React + TanStack Query + shadcn/ui.
 
 **Spec:** `docs/superpowers/specs/2026-08-16-celery-health-check-design.md`
 
 ## Global Constraints
 
-- Chạy trên **Windows native**: Celery worker/beat phải chạy với `--pool=solo`; mọi file `.bat` phải có line ending **CRLF**.
-- Không bao giờ in giá trị secret từ `.env` (SECRET_KEY, INTERNAL_API_KEY) ra output/log.
-- Dev services bind `127.0.0.1`.
-- Backend chạy bằng venv: `venv\Scripts\python.exe`; test backend: `venv\Scripts\python.exe -m pytest`.
-- Frontend: `cd frontend && npm run ...`; shadcn base là **Base UI** (dùng prop `render`, KHÔNG dùng `asChild`; icon trong Button dùng `data-icon="inline-start|inline-end"`, không thêm class size; toast dùng `toast.add({ type, title, description })`).
-- Commit message tiếng Anh, conventional commits (`feat:`, `test:`, `chore:`, `docs:`). KHÔNG `git push` — user tự push.
-- Test backend hiện có: 59 passed trước khi bắt đầu. Test frontend: 3 passed (`npm run test` chạy vitest).
-- Proxy scheme `socks5` KHÔNG được health check (giữ `unknown`).
-- `select_random_proxy` sau Phần 2 chỉ trả proxy `alive` (thay đổi hành vi đã cam kết trong spec MVP).
+- Run on **native Windows**: Celery worker/beat must run with `--pool=solo`; all `.bat` files must have **CRLF** line endings.
+- Never print secret values from `.env` (SECRET_KEY, INTERNAL_API_KEY) to output/logs.
+- Dev services bind to `127.0.0.1`.
+- Backend runs using venv: `venv\Scripts\python.exe`; backend tests: `venv\Scripts\python.exe -m pytest`.
+- Frontend: `cd frontend && npm run ...`; shadcn base is **Base UI** (use `render` prop, do NOT use `asChild`; icons inside Button use `data-icon="inline-start|inline-end"`, do not add size classes; toast uses `toast.add({ type, title, description })`).
+- Commit messages in English, conventional commits (`feat:`, `test:`, `chore:`, `docs:`). DO NOT `git push` — user pushes themselves.
+- Existing backend tests: 59 passed before starting. Frontend tests: 3 passed (`npm run test` runs vitest).
+- Proxy scheme `socks5` is NOT health checked (keeps `unknown`).
+- `select_random_proxy` after Part 2 only returns `alive` proxies (behavior change committed in the MVP spec).
 
 ---
 
@@ -33,20 +33,20 @@
 - Test: `tests/test_config.py`
 
 **Interfaces:**
-- Consumes: không có (task đầu tiên).
-- Produces: `settings.CELERY_BROKER_URL`, `settings.CELERY_RESULT_BACKEND`, `settings.HEALTH_CHECK_URL`, `settings.HEALTH_CHECK_TIMEOUT` — các task sau đọc 4 field này.
+- Consumes: None (first task).
+- Produces: `settings.CELERY_BROKER_URL`, `settings.CELERY_RESULT_BACKEND`, `settings.HEALTH_CHECK_URL`, `settings.HEALTH_CHECK_TIMEOUT` — subsequent tasks read these 4 fields.
 
-- [ ] **Step 1: Đọc file test config hiện có**
+- [ ] **Step 1: Read existing config test file**
 
-Đọc `tests/test_config.py` để biết pattern test Settings đang dùng (fixture, monkeypatch env, …). Viết test mới theo đúng pattern đó.
+Read `tests/test_config.py` to understand the Settings test pattern currently in use (fixtures, monkeypatch env, etc.). Write new tests following the exact same pattern.
 
-- [ ] **Step 2: Viết test failing cho 4 field mới**
+- [ ] **Step 2: Write failing test for the 4 new fields**
 
-Thêm vào `tests/test_config.py` (giữ nguyên các test cũ):
+Add to `tests/test_config.py` (keep existing tests intact):
 
 ```python
 def test_celery_and_health_check_defaults(monkeypatch):
-    # Xoá env để ăn default
+    # Clear env to use defaults
     for key in (
         "CELERY_BROKER_URL",
         "CELERY_RESULT_BACKEND",
@@ -63,16 +63,16 @@ def test_celery_and_health_check_defaults(monkeypatch):
     assert s.HEALTH_CHECK_TIMEOUT == 10.0
 ```
 
-Lưu ý: nếu test hiện có trong file dùng cách khởi tạo `Settings` khác (ví dụ không truyền `_env_file=None`), điều chỉnh cho khớp pattern — mục tiêu là assert 4 giá trị mặc định.
+Note: If existing tests in the file use a different way to initialize `Settings` (e.g. not passing `_env_file=None`), adjust to match the pattern — the goal is to assert the 4 default values.
 
-- [ ] **Step 3: Chạy test để chắc chắn FAIL**
+- [ ] **Step 3: Run test to verify it FAILS**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_config.py -v`
-Expected: test mới FAIL (field chưa tồn tại — `AttributeError` hoặc assert sai).
+Expected: New test FAILS (fields do not exist yet — `AttributeError` or assertion error).
 
-- [ ] **Step 4: Thêm 4 field vào Settings**
+- [ ] **Step 4: Add 4 fields to Settings**
 
-Sửa `app/core/config.py` — thêm 4 dòng vào class `Settings` (sau `CORS_ORIGINS`):
+Modify `app/core/config.py` — add 4 lines to the `Settings` class (after `CORS_ORIGINS`):
 
 ```python
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
@@ -81,33 +81,33 @@ Sửa `app/core/config.py` — thêm 4 dòng vào class `Settings` (sau `CORS_OR
     HEALTH_CHECK_TIMEOUT: float = 10.0
 ```
 
-- [ ] **Step 5: Thêm dependencies vào requirements.txt**
+- [ ] **Step 5: Add dependencies to requirements.txt**
 
-Thêm 2 dòng vào cuối `requirements.txt`:
+Add 2 lines to the end of `requirements.txt`:
 
 ```
 celery>=5.4.0
 redis>=5.0.0
 ```
 
-Cài đặt:
+Install:
 
 Run: `venv\Scripts\pip.exe install -r requirements.txt`
-Expected: cài thành công celery + redis (và các dependency con).
+Expected: Celery + redis (and transitive dependencies) successfully installed.
 
-- [ ] **Step 6: Cập nhật .env.example**
+- [ ] **Step 6: Update .env.example**
 
-Trong `.env.example`, thêm 2 dòng vào block `# Celery (Phần 2)` (sau `CELERY_RESULT_BACKEND`):
+In `.env.example`, add 2 lines to the `# Celery (Part 2)` block (after `CELERY_RESULT_BACKEND`):
 
 ```
 HEALTH_CHECK_URL=https://api.ipify.org
 HEALTH_CHECK_TIMEOUT=10
 ```
 
-- [ ] **Step 7: Chạy test để chắc chắn PASS**
+- [ ] **Step 7: Run test to verify it PASSES**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_config.py -v`
-Expected: tất cả PASS.
+Expected: All PASS.
 
 - [ ] **Step 8: Commit**
 
@@ -118,22 +118,22 @@ git commit -m "feat: add Celery and health check settings with dependencies"
 
 ---
 
-### Task 2: Health service — logic kiểm tra proxy thuần (httpx)
+### Task 2: Health service — pure proxy check logic (httpx)
 
 **Files:**
 - Create: `app/services/health_service.py`
 - Test: `tests/test_health_service.py`
 
 **Interfaces:**
-- Consumes: `settings.HEALTH_CHECK_URL`, `settings.HEALTH_CHECK_TIMEOUT` (Task 1); `Proxy` model (`app/models/proxy.py`) với các field `scheme`, `host`, `port`, `username`, `password`.
+- Consumes: `settings.HEALTH_CHECK_URL`, `settings.HEALTH_CHECK_TIMEOUT` (Task 1); `Proxy` model (`app/models/proxy.py`) with fields `scheme`, `host`, `port`, `username`, `password`.
 - Produces:
   - `CheckResult` dataclass: `alive: bool`, `latency_ms: float | None`.
-  - `check_proxy(proxy: Proxy) -> CheckResult` — hàm đồng bộ, KHÔNG phụ thuộc Celery/DB session.
-  - `build_proxy_url(proxy: Proxy) -> str` — helper dựng URL proxy (được export để test).
+  - `check_proxy(proxy: Proxy) -> CheckResult` — synchronous function, NO dependency on Celery/DB session.
+  - `build_proxy_url(proxy: Proxy) -> str` — proxy URL construction helper (exported for testing).
 
-- [ ] **Step 1: Viết test failing**
+- [ ] **Step 1: Write failing test**
 
-Tạo `tests/test_health_service.py`:
+Create `tests/test_health_service.py`:
 
 ```python
 from unittest.mock import MagicMock, patch
@@ -186,7 +186,7 @@ class TestCheckProxy:
         assert result == CheckResult(alive=False, latency_ms=None)
 
     def test_any_http_response_counts_as_alive(self):
-        # Proxy hoạt động = có response HTTP, kể cả 403/500 từ target
+        # Working proxy = receives HTTP response, even 403/500 from target
         response = MagicMock(spec=httpx.Response)
         response.status_code = 403
         with patch("app.services.health_service.httpx.Client") as mock_client:
@@ -205,14 +205,14 @@ class TestCheckProxy:
         assert kwargs["timeout"] == 10.0
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn FAIL**
+- [ ] **Step 2: Run test to verify it FAILS**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_health_service.py -v`
-Expected: FAIL với `ModuleNotFoundError: No module named 'app.services.health_service'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.health_service'`.
 
-- [ ] **Step 3: Viết implementation**
+- [ ] **Step 3: Write implementation**
 
-Tạo `app/services/health_service.py`:
+Create `app/services/health_service.py`:
 
 ```python
 import time
@@ -237,7 +237,7 @@ def build_proxy_url(proxy: Proxy) -> str:
 
 
 def check_proxy(proxy: Proxy) -> CheckResult:
-    """GET HEALTH_CHECK_URL qua proxy. Có response HTTP -> alive; lỗi/timeout -> dead."""
+    """GET HEALTH_CHECK_URL via proxy. HTTP response received -> alive; error/timeout -> dead."""
     start = time.perf_counter()
     try:
         with httpx.Client(
@@ -250,7 +250,7 @@ def check_proxy(proxy: Proxy) -> CheckResult:
         return CheckResult(alive=False, latency_ms=None)
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn PASS**
+- [ ] **Step 4: Run test to verify it PASSES**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_health_service.py -v`
 Expected: 7 tests PASS.
@@ -264,22 +264,22 @@ git commit -m "feat: add health service checking proxies via httpx"
 
 ---
 
-### Task 3: Celery worker — `app/worker.py` với 2 task + beat schedule
+### Task 3: Celery worker — `app/worker.py` with 2 tasks + beat schedule
 
 **Files:**
 - Create: `app/worker.py`
 - Test: `tests/test_worker.py`
 
 **Interfaces:**
-- Consumes: `settings.CELERY_BROKER_URL`, `settings.CELERY_RESULT_BACKEND` (Task 1); `health_service.check_proxy` (Task 2); `engine` từ `app.core.database`; `Proxy`, `ProxyStatus` từ `app.models.proxy`.
+- Consumes: `settings.CELERY_BROKER_URL`, `settings.CELERY_RESULT_BACKEND` (Task 1); `health_service.check_proxy` (Task 2); `engine` from `app.core.database`; `Proxy`, `ProxyStatus` from `app.models.proxy`.
 - Produces:
-  - `celery_app` — Celery instance tên `"proxyhub"`, `beat_schedule` key `"check-all-proxies-every-5-min"` chạy task `"app.worker.check_all_proxies"` mỗi `300.0` giây.
-  - Task `check_all_proxies()` → trả `int` (số task đã dispatch).
-  - Task `check_proxy_task(proxy_id: int)` → trả `str` (`"alive"`, `"dead"`, hoặc `"not_found"`). Tên Celery task là `app.worker.check_proxy_task`.
+  - `celery_app` — Celery instance named `"proxyhub"`, `beat_schedule` key `"check-all-proxies-every-5-min"` running task `"app.worker.check_all_proxies"` every `300.0` seconds.
+  - Task `check_all_proxies()` → returns `int` (number of dispatched tasks).
+  - Task `check_proxy_task(proxy_id: int)` → returns `str` (`"alive"`, `"dead"`, or `"not_found"`). Celery task name is `app.worker.check_proxy_task`.
 
-- [ ] **Step 1: Viết test failing**
+- [ ] **Step 1: Write failing test**
 
-Tạo `tests/test_worker.py`:
+Create `tests/test_worker.py`:
 
 ```python
 from unittest.mock import patch
@@ -311,7 +311,7 @@ class TestCheckAllProxies:
 
         with patch.object(check_proxy_task, "delay") as mock_delay:
             count = check_all_proxies()
-        assert count == 2  # socks5 bị bỏ qua
+        assert count == 2  # socks5 is skipped
         assert mock_delay.call_count == 2
 
     def test_empty_pool_dispatches_nothing(self, engine):
@@ -380,7 +380,7 @@ class TestBeatSchedule:
         assert entry["schedule"] == 300.0
 ```
 
-**Quan trọng — DB trong test:** các task trong `app/worker.py` dùng engine qua hàm `_get_engine()` (indirection để patch được). Fixture autouse đặt TRONG `tests/test_worker.py` (không đặt trong conftest để tránh ảnh hưởng test khác), import `app.worker` trước khi patch:
+**Important — DB in tests:** The tasks in `app/worker.py` access the engine via `_get_engine()` (indirection allowing it to be patched). Place the autouse fixture INSIDE `tests/test_worker.py` (not in conftest to avoid affecting other tests), importing `app.worker` before patching:
 
 ```python
 @pytest.fixture(autouse=True)
@@ -390,16 +390,16 @@ def _worker_engine(engine, monkeypatch):
     monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
 ```
 
-(Import trong fixture chạy trước test body nên patch luôn có hiệu lực; không cần check `sys.modules`.)
+(The import inside the fixture runs before the test body so the patch is always effective; no need to check `sys.modules`.)
 
-- [ ] **Step 2: Chạy test để chắc chắn FAIL**
+- [ ] **Step 2: Run test to verify it FAILS**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_worker.py -v`
-Expected: FAIL với `ModuleNotFoundError: No module named 'app.worker'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'app.worker'`.
 
-- [ ] **Step 3: Viết implementation**
+- [ ] **Step 3: Write implementation**
 
-Tạo `app/worker.py`:
+Create `app/worker.py`:
 
 ```python
 import logging
@@ -432,7 +432,7 @@ CHECKABLE_SCHEMES = ("http", "https")
 
 
 def _get_engine():
-    """Indirection để test có thể thay engine bằng DB in-memory."""
+    """Indirection so tests can swap the engine for an in-memory DB."""
     return database.engine
 
 
@@ -467,7 +467,7 @@ def check_proxy_task(proxy_id: int) -> str:
         return "alive" if result.alive else "dead"
 ```
 
-Thêm vào đầu `tests/test_worker.py` (sau các import) fixture autouse để mọi test trong file dùng engine in-memory:
+Add an autouse fixture at the top of `tests/test_worker.py` (after imports) so all tests in the file use the in-memory engine:
 
 ```python
 import pytest
@@ -475,21 +475,21 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _worker_engine(engine, monkeypatch):
-    """Trỏ engine của app.worker về DB test in-memory."""
+    """Point app.worker engine to the in-memory test DB."""
     import app.worker
 
     monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn PASS**
+- [ ] **Step 4: Run test to verify it PASSES**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_worker.py -v`
 Expected: 6 tests PASS.
 
-- [ ] **Step 5: Chạy toàn bộ suite backend để chắc chắn không vỡ gì**
+- [ ] **Step 5: Run entire backend suite to ensure nothing is broken**
 
 Run: `venv\Scripts\python.exe -m pytest -q`
-Expected: tất cả PASS (59 cũ + test mới).
+Expected: All PASS (59 existing + new tests).
 
 - [ ] **Step 6: Commit**
 
@@ -500,21 +500,21 @@ git commit -m "feat: add Celery worker with health check tasks and beat schedule
 
 ---
 
-### Task 4: Gateway chỉ chọn proxy alive
+### Task 4: Gateway selects only alive proxies
 
 **Files:**
 - Modify: `app/services/proxy_service.py`
 - Test: `tests/test_proxy_service.py`
 
 **Interfaces:**
-- Consumes: `ProxyStatus` từ `app.models.proxy`.
-- Produces: `select_random_proxy(session)` chỉ trả proxy có `status == ALIVE` và scheme ∈ {http, https}; trả `None` nếu không có.
+- Consumes: `ProxyStatus` from `app.models.proxy`.
+- Produces: `select_random_proxy(session)` returns only proxies with `status == ALIVE` and scheme ∈ {http, https}; returns `None` if none exist.
 
-- [ ] **Step 1: Sửa test theo hành vi mới**
+- [ ] **Step 1: Update tests for the new behavior**
 
-Trong `tests/test_proxy_service.py`, class `TestSelectRandomProxy`:
+In `tests/test_proxy_service.py`, class `TestSelectRandomProxy`:
 
-Thay test `test_select_includes_unknown` bằng:
+Replace test `test_select_includes_unknown` with:
 
 ```python
     def test_select_excludes_unknown(self, session):
@@ -524,16 +524,16 @@ Thay test `test_select_includes_unknown` bằng:
         assert proxy is None
 ```
 
-Giữ nguyên `test_select_excludes_dead`, `test_select_excludes_socks5`, `test_select_empty_pool` (chúng vẫn đúng với hành vi mới).
+Keep `test_select_excludes_dead`, `test_select_excludes_socks5`, `test_select_empty_pool` unchanged (they remain correct under the new behavior).
 
-- [ ] **Step 2: Chạy test để chắc chắn FAIL**
+- [ ] **Step 2: Run test to verify it FAILS**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_proxy_service.py -v`
-Expected: `test_select_excludes_unknown` FAIL (hiện tại unknown vẫn được chọn).
+Expected: `test_select_excludes_unknown` FAILS (currently unknown is still selected).
 
-- [ ] **Step 3: Đổi điều kiện trong select_random_proxy**
+- [ ] **Step 3: Change condition in select_random_proxy**
 
-Trong `app/services/proxy_service.py`, sửa `select_random_proxy`:
+In `app/services/proxy_service.py`, update `select_random_proxy`:
 
 ```python
 def select_random_proxy(session: Session) -> Proxy | None:
@@ -548,17 +548,17 @@ def select_random_proxy(session: Session) -> Proxy | None:
     return random.choice(proxies)
 ```
 
-(Chỉ đổi dòng `Proxy.status != ProxyStatus.DEAD` thành `Proxy.status == ProxyStatus.ALIVE`.)
+(Only change line `Proxy.status != ProxyStatus.DEAD` to `Proxy.status == ProxyStatus.ALIVE`.)
 
-- [ ] **Step 4: Chạy test để chắc chắn PASS**
+- [ ] **Step 4: Run test to verify it PASSES**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_proxy_service.py tests/test_internal_api.py tests/test_gateway_plugin.py -v`
-Expected: tất cả PASS. Nếu `test_internal_api.py` hoặc `test_gateway_plugin.py` có test seed proxy `unknown`/`dead` rồi expect chọn được, phải cập nhật seed thành `status=ProxyStatus.ALIVE` cho khớp hành vi mới.
+Expected: All PASS. If `test_internal_api.py` or `test_gateway_plugin.py` has tests that seed `unknown`/`dead` proxies and expect them to be selected, update the seed to `status=ProxyStatus.ALIVE` to match the new behavior.
 
-- [ ] **Step 5: Chạy toàn bộ suite backend**
+- [ ] **Step 5: Run entire backend suite**
 
 Run: `venv\Scripts\python.exe -m pytest -q`
-Expected: tất cả PASS.
+Expected: All PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -567,7 +567,7 @@ git add app/services/proxy_service.py tests/test_proxy_service.py tests/test_int
 git commit -m "feat: gateway selects only alive proxies"
 ```
 
-(Lượt bỏ khỏi `git add` các file test không cần sửa.)
+(Omit test files from `git add` that did not need modifications.)
 
 ---
 
@@ -578,12 +578,12 @@ git commit -m "feat: gateway selects only alive proxies"
 - Test: `tests/test_proxies_api.py`
 
 **Interfaces:**
-- Consumes: task `check_all_proxies` từ `app.worker` (Task 3); `get_current_user` từ `app.api.deps`.
-- Produces: `POST /api/proxies/check-all` — yêu cầu JWT; dispatch `check_all_proxies.delay()`; trả **202** với body `{"detail": "Health check started", "task_id": "<id>"}`.
+- Consumes: task `check_all_proxies` from `app.worker` (Task 3); `get_current_user` from `app.api.deps`.
+- Produces: `POST /api/proxies/check-all` — requires JWT; dispatches `check_all_proxies.delay()`; returns **202** with body `{"detail": "Health check started", "task_id": "<id>"}`.
 
-- [ ] **Step 1: Viết test failing**
+- [ ] **Step 1: Write failing test**
 
-Thêm vào `tests/test_proxies_api.py`:
+Add to `tests/test_proxies_api.py`:
 
 ```python
 def test_check_all_dispatches_task(client, auth_headers):
@@ -602,24 +602,24 @@ def test_check_all_requires_auth(client):
     assert resp.status_code == 401
 ```
 
-Thêm import đầu file: `from unittest.mock import patch`.
+Add import at top of file: `from unittest.mock import patch`.
 
-- [ ] **Step 2: Chạy test để chắc chắn FAIL**
+- [ ] **Step 2: Run test to verify it FAILS**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_proxies_api.py -v`
-Expected: 2 test mới FAIL (404 hoặc 405 — endpoint chưa tồn tại).
+Expected: 2 new tests FAIL (404 or 405 — endpoint does not exist yet).
 
-- [ ] **Step 3: Thêm endpoint**
+- [ ] **Step 3: Add endpoint**
 
-Trong `app/api/proxies.py`:
+In `app/api/proxies.py`:
 
-Thêm import đầu file:
+Add import at top of file:
 
 ```python
 from app.worker import check_all_proxies
 ```
 
-Thêm endpoint (đặt TRƯỚC `@router.get("/{proxy_id}")` để tránh route `check-all` bị bắt bởi `{proxy_id}`):
+Add endpoint (place BEFORE `@router.get("/{proxy_id}")` to prevent the `check-all` route from being caught by `{proxy_id}`):
 
 ```python
 @router.post("/check-all", status_code=status.HTTP_202_ACCEPTED)
@@ -628,15 +628,15 @@ def trigger_check_all(_: User = Depends(get_current_user)):
     return {"detail": "Health check started", "task_id": result.id}
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn PASS**
+- [ ] **Step 4: Run test to verify it PASSES**
 
 Run: `venv\Scripts\python.exe -m pytest tests/test_proxies_api.py -v`
-Expected: tất cả PASS.
+Expected: All PASS.
 
-- [ ] **Step 5: Chạy toàn bộ suite backend**
+- [ ] **Step 5: Run entire backend suite**
 
 Run: `venv\Scripts\python.exe -m pytest -q`
-Expected: tất cả PASS.
+Expected: All PASS.
 
 - [ ] **Step 6: Commit**
 
@@ -647,19 +647,19 @@ git commit -m "feat: add POST /api/proxies/check-all to trigger health check"
 
 ---
 
-### Task 6: Frontend — nút "Kiểm tra ngay" trên trang Proxies
+### Task 6: Frontend — "Check now" button on Proxies page
 
 **Files:**
 - Modify: `frontend/src/api/proxies.ts`
 - Modify: `frontend/src/pages/ProxiesPage.tsx`
 
 **Interfaces:**
-- Consumes: `POST /api/proxies/check-all` (Task 5) trả 202 + `{detail, task_id}`; axios client từ `./client`; toast từ `@/components/ui/toast`.
-- Produces: `triggerCheckAll(): Promise<{ detail: string; task_id: string }>` trong `frontend/src/api/proxies.ts`.
+- Consumes: `POST /api/proxies/check-all` (Task 5) returns 202 + `{detail, task_id}`; axios client from `./client`; toast from `@/components/ui/toast`.
+- Produces: `triggerCheckAll(): Promise<{ detail: string; task_id: string }>` in `frontend/src/api/proxies.ts`.
 
-- [ ] **Step 1: Thêm API function**
+- [ ] **Step 1: Add API function**
 
-Trong `frontend/src/api/proxies.ts`, thêm sau `fetchStats`:
+In `frontend/src/api/proxies.ts`, add after `fetchStats`:
 
 ```typescript
 export interface CheckAllResponse {
@@ -673,18 +673,18 @@ export async function triggerCheckAll(): Promise<CheckAllResponse> {
 }
 ```
 
-- [ ] **Step 2: Thêm nút vào ProxiesPage**
+- [ ] **Step 2: Add button to ProxiesPage**
 
-Trong `frontend/src/pages/ProxiesPage.tsx`:
+In `frontend/src/pages/ProxiesPage.tsx`:
 
-Thêm import:
+Add imports:
 
 ```typescript
 import { RefreshCwIcon } from 'lucide-react'
-import { triggerCheckAll } from '@/api/proxies'  // gộp vào import sẵn có từ '@/api/proxies'
+import { triggerCheckAll } from '@/api/proxies'  // merge into existing import from '@/api/proxies'
 ```
 
-Thêm state và handler trong component (cạnh các state khác):
+Add state and handler inside the component (alongside other state variables):
 
 ```typescript
 const [checking, setChecking] = useState(false)
@@ -695,13 +695,13 @@ const handleCheckAll = async () => {
     await triggerCheckAll()
     toast.add({
       type: 'success',
-      title: 'Đã gửi yêu cầu kiểm tra sức khoẻ',
-      description: 'Kết quả sẽ cập nhật sau vài phút.',
+      title: 'Health check requested',
+      description: 'Results will update in a few minutes.',
     })
   } catch {
     toast.add({
       type: 'error',
-      title: 'Không thể gửi yêu cầu kiểm tra',
+      title: 'Failed to request health check',
     })
   } finally {
     setChecking(false)
@@ -709,24 +709,24 @@ const handleCheckAll = async () => {
 }
 ```
 
-Thêm nút vào khối toolbar `<div className="flex gap-2">` (đặt TRƯỚC nút "Add Proxy"):
+Add button to the toolbar container `<div className="flex gap-2">` (place BEFORE the "Add Proxy" button):
 
 ```tsx
 <Button variant="outline" onClick={handleCheckAll} disabled={checking}>
   <RefreshCwIcon data-icon="inline-start" />
-  Kiểm tra ngay
+  Check now
 </Button>
 ```
 
 - [ ] **Step 3: Build frontend**
 
 Run: `cd frontend && npm run build`
-Expected: build thành công, không lỗi TypeScript.
+Expected: Build succeeds, no TypeScript errors.
 
-- [ ] **Step 4: Chạy test frontend**
+- [ ] **Step 4: Run frontend tests**
 
 Run: `cd frontend && npm run test`
-Expected: 3 tests PASS (không thêm test mới cho nút — giữ phạm vi gọn; nếu muốn có thể thêm test render nút nhưng không bắt buộc).
+Expected: 3 tests PASS (no new tests added for the button — keep scope concise; adding button render tests is optional).
 
 - [ ] **Step 5: Commit**
 
@@ -737,19 +737,19 @@ git commit -m "feat: add health check trigger button to proxies page"
 
 ---
 
-### Task 7: Vận hành — start-dev.bat, README, .env.example
+### Task 7: Operations — start-dev.bat, README, .env.example
 
 **Files:**
 - Modify: `start-dev.bat`
 - Modify: `README.md`
 
 **Interfaces:**
-- Consumes: `app.worker.celery_app` (Task 3); các env var Celery (Task 1).
-- Produces: `start-dev.bat` khởi động thêm Celery Worker + Beat; README phản ánh Phần 2 hoàn thành.
+- Consumes: `app.worker.celery_app` (Task 3); Celery env vars (Task 1).
+- Produces: `start-dev.bat` launches additional Celery Worker + Beat; README reflects Part 2 completion.
 
-- [ ] **Step 1: Thêm 2 khối Celery vào start-dev.bat**
+- [ ] **Step 1: Add 2 Celery blocks to start-dev.bat**
 
-Trong `start-dev.bat`, sau khối Gateway (dòng `start "ProxyHub Gateway" ...`), thêm:
+In `start-dev.bat`, after the Gateway block (line `start "ProxyHub Gateway" ...`), add:
 
 ```bat
 REM --- 4. Celery Worker: health check tasks (Windows can --pool=solo) ---
@@ -759,40 +759,40 @@ REM --- 5. Celery Beat: scheduler 5 phut/lan ---
 start "ProxyHub Celery Beat" cmd /k "venv\Scripts\celery.exe -A app.worker.celery_app beat --loglevel=info"
 ```
 
-Cập nhật dòng tiêu đề đầu script cho phản ánh đủ thành phần:
+Update the header line at the start of the script to reflect all components:
 
 ```bat
 echo   ProxyHub - Khoi dong Backend + Frontend + Gateway + Celery
 ```
 
-Và thêm 2 dòng vào khối echo tổng kết cuối script:
+And add 2 lines to the summary echo block at the end of the script:
 
 ```bat
 echo   Celery  : worker + beat (health check moi 5 phut)
 ```
 
-**Quan trọng:** file `.bat` phải giữ line ending **CRLF**. Sau khi sửa, kiểm tra:
+**Important:** The `.bat` file must keep **CRLF** line endings. After editing, verify:
 
 Run: `file start-dev.bat`
-Expected: chứa `CRLF` (ví dụ `with CRLF line terminators`). Nếu ra `LF` hoặc không có CRLF, convert lại: `awk 'sub(/$/, "\r")' start-dev.bat > tmp && mv tmp start-dev.bat`.
+Expected: Contains `CRLF` (e.g. `with CRLF line terminators`). If it has `LF` or lacks CRLF, convert it back: `awk 'sub(/$/, "\r")' start-dev.bat > tmp && mv tmp start-dev.bat`.
 
-- [ ] **Step 2: Cập nhật README**
+- [ ] **Step 2: Update README**
 
-Trong `README.md`:
+In `README.md`:
 
-1. Đổi dòng `- [ ] Celery Health Check tự động` thành `- [x] Celery Health Check tự động`.
-2. Trong phần `.env` (quanh dòng 226-235), thêm 2 dòng vào block Celery nếu chưa có:
+1. Change the line `- [ ] Automated Celery Health Check` to `- [x] Automated Celery Health Check`.
+2. In the `.env` section (around lines 226-235), add 2 lines to the Celery block if not already present:
 
 ```
 HEALTH_CHECK_URL=https://api.ipify.org
 HEALTH_CHECK_TIMEOUT=10
 ```
 
-3. Trong phần `### 3. Health Check` (quanh dòng 278), đảm bảo mô tả khớp hành vi mới: worker check mỗi 5 phút qua `HEALTH_CHECK_URL`, đánh dấu `alive`/`dead` + `latency_ms`, gateway chỉ chọn `alive`, và có thể trigger thủ công bằng nút "Kiểm tra ngay" trên Dashboard hoặc `POST /api/proxies/check-all`.
+3. In section `### 3. Health Check` (around line 278), ensure the description matches the new behavior: worker checks every 5 minutes via `HEALTH_CHECK_URL`, marks `alive`/`dead` + `latency_ms`, gateway only selects `alive`, and manual checks can be triggered via the "Check now" button on the Dashboard or `POST /api/proxies/check-all`.
 
-- [ ] **Step 3: Kiểm tra bat file parse được**
+- [ ] **Step 3: Verify bat file parses correctly**
 
-Run: `cmd.exe //c "start-dev.bat"` KHÔNG được chạy thật (sẽ mở nhiều cửa sổ). Thay vào đó kiểm tra cú pháp bằng cách đọc lại file và chắc chắn mỗi dòng `start "..." cmd /k "..."` nằm trên một dòng duy nhất, không xuống dòng giữa chừng.
+Run: `cmd.exe //c "start-dev.bat"` DO NOT run for real (will open multiple windows). Instead check syntax by reading the file again and ensuring each `start "..." cmd /k "..."` line is on a single line, not broken midway.
 
 - [ ] **Step 4: Commit**
 
@@ -803,49 +803,49 @@ git commit -m "chore: launch Celery worker and beat from start-dev.bat; update R
 
 ---
 
-### Task 8: Kiểm chứng end-to-end thủ công
+### Task 8: Manual end-to-end verification
 
-**Files:** không sửa code (chỉ chạy và quan sát).
+**Files:** No code modifications (run and observe only).
 
 **Interfaces:**
-- Consumes: toàn bộ các task trên; Redis đang chạy trên máy.
+- Consumes: All preceding tasks; Redis running locally.
 
-- [ ] **Step 1: Chắc chắn Redis đang chạy**
+- [ ] **Step 1: Ensure Redis is running**
 
 Run: `venv\Scripts\python.exe -c "import redis; r = redis.Redis(); r.ping(); print('Redis OK')"`
-Expected: `Redis OK`. Nếu lỗi kết nối → báo user khởi động Redis rồi dừng task này.
+Expected: `Redis OK`. If connection error → notify user to start Redis and pause this task.
 
-- [ ] **Step 2: Chạy toàn bộ test**
+- [ ] **Step 2: Run all tests**
 
 Run: `venv\Scripts\python.exe -m pytest -q`
-Expected: tất cả PASS.
+Expected: All PASS.
 
 Run: `cd frontend && npm run build && npm run test`
-Expected: build OK, 3 tests PASS.
+Expected: Build OK, 3 tests PASS.
 
-- [ ] **Step 3: Smoke test worker trực tiếp (không cần beat)**
+- [ ] **Step 3: Smoke test worker directly (without beat)**
 
-Chạy task `check_all_proxies` synchronously trong Python để xác nhận worker import được và DB cập nhật:
+Run task `check_all_proxies` synchronously in Python to verify worker can be imported and DB updates:
 
 Run:
 ```bash
 venv\Scripts\python.exe -c "from app.worker import check_all_proxies; print('dispatched:', check_all_proxies())"
 ```
-Expected: in ra số proxy http/https trong DB (có thể là 0 nếu DB trống — không lỗi). Nếu DB có proxy, kiểm tra status được cập nhật:
+Expected: Prints number of http/https proxies in DB (can be 0 if DB is empty — no error). If DB has proxies, check that status is updated:
 ```bash
 venv\Scripts\python.exe -c "from sqlmodel import Session, select; from app.core.database import engine; from app.models.proxy import Proxy; s = Session(engine); [print(p.host, p.status, p.latency_ms) for p in s.exec(select(Proxy)).all()]"
 ```
 
-Lưu ý: chạy trực tiếp hàm task (không qua `.delay()`) không cần broker — bước này xác nhận logic DB + httpx hoạt động. Bước `.delay()` thật cần worker chạy; để user tự chạy `start-dev.bat` và quan sát.
+Note: Running the task function directly (not via `.delay()`) does not require a broker — this step verifies DB + httpx logic is functional. The actual `.delay()` step requires running workers; let the user run `start-dev.bat` to observe.
 
-- [ ] **Step 4: Báo cáo kết quả cho user**
+- [ ] **Step 4: Report results to user**
 
-Tổng kết: những gì đã làm, cách chạy (`start-dev.bat` giờ mở thêm 2 cửa sổ Celery), và nhắc user tự push khi hài lòng. KHÔNG tự commit thêm, KHÔNG push.
+Summary: What was completed, how to run (`start-dev.bat` now opens 2 additional Celery windows), and remind user to push when satisfied. DO NOT create extra commits, DO NOT push.
 
 ---
 
 ## Self-Review Notes
 
-- **Spec coverage:** config (3.1) → Task 1; health service (3.2) → Task 2; worker (3.3) → Task 3; gateway alive-only (3.5) → Task 4; API trigger (3.4) → Task 5; frontend (3.6) → Task 6; vận hành (3.7) → Task 7; testing (mục 5) → phủ trong Task 1-6; error handling (mục 4) → nằm trong implementation của Task 2/3.
-- **Type consistency:** `CheckResult(alive, latency_ms)` dùng thống nhất Task 2/3; `check_all_proxies` trả int, `check_proxy_task` trả str; endpoint trả `{detail, task_id}` khớp frontend `CheckAllResponse`.
-- **Rủi ro đã xử lý:** route `/check-all` đặt trước `/{proxy_id}`; engine indirection `_get_engine()` cho test; `.bat` CRLF được kiểm tra; test `unknown`-included cũ được lật thành excluded.
+- **Spec coverage:** config (3.1) → Task 1; health service (3.2) → Task 2; worker (3.3) → Task 3; gateway alive-only (3.5) → Task 4; API trigger (3.4) → Task 5; frontend (3.6) → Task 6; operations (3.7) → Task 7; testing (section 5) → covered in Tasks 1-6; error handling (section 4) → implemented in Tasks 2/3.
+- **Type consistency:** `CheckResult(alive, latency_ms)` used consistently across Tasks 2/3; `check_all_proxies` returns int, `check_proxy_task` returns str; endpoint returns `{detail, task_id}` matching frontend `CheckAllResponse`.
+- **Addressed risks:** route `/check-all` placed before `/{proxy_id}`; engine indirection `_get_engine()` for tests; `.bat` CRLF verified; legacy `unknown`-included test flipped to excluded.

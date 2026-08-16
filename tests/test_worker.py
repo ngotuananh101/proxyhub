@@ -9,7 +9,7 @@ from app.models.proxy import Proxy, ProxyStatus
 
 @pytest.fixture(autouse=True)
 def _worker_engine(engine, monkeypatch):
-    """Trỏ engine của app.worker về DB test in-memory."""
+    """Point app.worker's engine at the in-memory test DB."""
     import app.worker
 
     monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
@@ -42,10 +42,10 @@ class TestCheckAllProxies:
         ):
             count = check_all_proxies()
 
-        assert count == 2  # socks5 bị bỏ qua
+        assert count == 2  # socks5 is skipped
         with Session(engine) as session:
             socks = session.get(Proxy, ids[2])
-            assert socks.status == ProxyStatus.UNKNOWN  # không đụng tới
+            assert socks.status == ProxyStatus.UNKNOWN  # left untouched
             assert socks.last_checked_at is None
 
     def test_empty_pool_returns_zero(self, engine):
@@ -75,11 +75,11 @@ class TestCheckAllProxies:
         ) as mock_check:
             count = check_all_proxies()
 
-        assert count == 1  # proxy dead bị bỏ qua
+        assert count == 1  # dead proxy is skipped
         assert mock_check.call_count == 1
         with Session(engine) as session:
             dead = session.get(Proxy, ids[1])
-            assert dead.status == ProxyStatus.DEAD  # không bị đụng tới
+            assert dead.status == ProxyStatus.DEAD  # left untouched
             assert dead.last_checked_at is None
 
     def test_marks_alive_and_dead(self, engine):

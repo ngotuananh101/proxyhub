@@ -62,11 +62,11 @@ export function AppHeader() {
           <DropdownMenuGroup>
             <DropdownMenuItem onClick={() => navigate('/profile')}>
               <UserIcon />
-              Quản lý profile
+              Manage profile
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={handleLogout}>
               <LogOutIcon />
-              Đăng xuất
+              Log out
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

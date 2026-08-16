@@ -6,7 +6,7 @@ export function AppFooter() {
       <div className="flex flex-col items-center justify-between gap-2 text-xs text-muted-foreground sm:flex-row">
         <p className="font-medium text-foreground">ProxyHub</p>
         <div className="flex items-center gap-2">
-          <span>Hệ thống quản lý &amp; xoay proxy</span>
+          <span>Proxy management &amp; rotation system</span>
           <Separator orientation="vertical" className="h-3" />
           <span>API :8000</span>
           <Separator orientation="vertical" className="h-3" />

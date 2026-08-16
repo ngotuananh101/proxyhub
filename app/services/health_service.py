@@ -20,7 +20,7 @@ def build_proxy_url(proxy: Proxy) -> str:
 
 
 async def check_proxy(proxy: Proxy) -> CheckResult:
-    """GET HEALTH_CHECK_URL qua proxy. Có response HTTP -> alive; lỗi/timeout -> dead."""
+    """GET HEALTH_CHECK_URL through the proxy. HTTP response -> alive; error/timeout -> dead."""
     start = time.perf_counter()
     try:
         async with httpx.AsyncClient(

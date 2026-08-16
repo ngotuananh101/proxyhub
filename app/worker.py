@@ -30,12 +30,12 @@ CHECKABLE_STATUSES = (ProxyStatus.ALIVE, ProxyStatus.UNKNOWN)
 
 
 def _get_engine():
-    """Indirection để test có thể thay engine bằng DB in-memory."""
+    """Indirection so tests can swap in an in-memory DB engine."""
     return database.engine
 
 
 async def _check_all(proxies: list[Proxy]) -> list[health_service.CheckResult]:
-    """Check song song toàn bộ proxy, giới hạn bởi HEALTH_CHECK_CONCURRENCY."""
+    """Check all proxies concurrently, bounded by HEALTH_CHECK_CONCURRENCY."""
     semaphore = asyncio.Semaphore(settings.HEALTH_CHECK_CONCURRENCY)
 
     async def _bounded(proxy: Proxy) -> health_service.CheckResult:
@@ -47,7 +47,7 @@ async def _check_all(proxies: list[Proxy]) -> list[health_service.CheckResult]:
 
 @celery_app.task(name="app.worker.check_all_proxies")
 def check_all_proxies() -> int:
-    """Kiểm tra sức khoẻ toàn bộ proxy http/https trong một task duy nhất."""
+    """Health-check all http/https proxies in a single task."""
     with Session(_get_engine()) as session:
         proxies = session.exec(
             select(Proxy).where(
