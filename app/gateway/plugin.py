@@ -2,6 +2,7 @@
 import base64
 import logging
 import os
+import threading
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -16,6 +17,9 @@ from proxy.http.proxy import HttpProxyBasePlugin
 logger = logging.getLogger(__name__)
 
 GATEWAY_API_URL = os.environ.get("GATEWAY_API_URL", "http://localhost:8000/internal/proxies")
+GATEWAY_LOG_URL = os.environ.get(
+    "GATEWAY_LOG_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/logs"
+)
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 API_TIMEOUT = 2.0
 
@@ -44,6 +48,19 @@ def fetch_proxy_from_api(api_url: str, api_key: str) -> Optional[Url]:
         auth = f"{data['username']}:{data['password']}@"
     url_str = f"{data['scheme']}://{auth}{data['host']}:{data['port']}"
     return Url.from_bytes(bytes_(url_str))
+
+
+def send_access_log(payload: Dict[str, Any]) -> None:
+    """POST one access-log entry to the backend. Fire-and-forget."""
+    try:
+        httpx.post(
+            GATEWAY_LOG_URL,
+            json=payload,
+            headers={"X-Internal-Key": INTERNAL_API_KEY},
+            timeout=API_TIMEOUT,
+        )
+    except Exception as e:
+        logger.warning("Failed to send access log: %s", e)
 
 
 class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
@@ -144,4 +161,18 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             self._metadata[3], self._metadata[0], self._metadata[1],
             self._metadata[2] or "", addr, port,
         )
+        # Push to the backend for the realtime log feed (never blocks proxying)
+        threading.Thread(
+            target=send_access_log,
+            args=({
+                "client_ip": context.get("client_ip"),
+                "method": self._metadata[3],
+                "host": self._metadata[0],
+                "path": self._metadata[2],
+                "proxy_host": addr,
+                "proxy_port": port,
+                "response_bytes": self.total_size,
+            },),
+            daemon=True,
+        ).start()
         return None

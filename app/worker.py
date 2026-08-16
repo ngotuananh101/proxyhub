@@ -11,6 +11,7 @@ from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
 from app.models.source import ProxySource
 from app.services import health_service
+from app.services.events import broadcast_sync
 from app.services.settings_service import get_all as get_settings
 from app.services.source_service import fetch_and_import, is_due, seed_default_sources
 
@@ -44,6 +45,25 @@ LAST_RUN_KEY = "HEALTH_CHECK_LAST_RUN_AT"
 def _get_engine():
     """Indirection so tests can swap in an in-memory DB engine."""
     return database.engine
+
+
+def _broadcast_stats(session: Session) -> None:
+    """Push fresh summary counts to connected dashboard clients."""
+    from sqlmodel import func
+
+    stats = {
+        "total": session.exec(select(func.count(Proxy.id))).one(),
+        "alive": session.exec(
+            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.ALIVE)
+        ).one(),
+        "dead": session.exec(
+            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.DEAD)
+        ).one(),
+        "unknown": session.exec(
+            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.UNKNOWN)
+        ).one(),
+    }
+    broadcast_sync("stats", stats)
 
 
 def _seconds_since_last_run(session: Session) -> float | None:
@@ -104,6 +124,7 @@ def check_all_proxies(force: bool = False) -> int:
         if not proxies:
             logger.info("No checkable proxies found")
             _mark_last_run(session)
+            _broadcast_stats(session)
             return 0
 
         results = asyncio.run(
@@ -124,6 +145,7 @@ def check_all_proxies(force: bool = False) -> int:
             session.add(proxy)
         _mark_last_run(session)
         session.commit()
+        _broadcast_stats(session)
 
     alive = sum(1 for r in results if r.alive)
     logger.info("Checked %d proxies: %d alive, %d dead", len(results), alive, len(results) - alive)

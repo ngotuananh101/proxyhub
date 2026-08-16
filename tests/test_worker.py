@@ -250,6 +250,44 @@ class TestIntervalGating:
         assert (datetime.now(timezone.utc) - last_run).total_seconds() < 60
 
 
+class TestStatsBroadcast:
+    def test_broadcasts_stats_after_check(self, engine):
+        from app.services.health_service import CheckResult
+        from app.worker import check_all_proxies
+
+        _seed(
+            engine,
+            [
+                Proxy(scheme="http", host="1.1.1.1", port=80),
+                Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD),
+                Proxy(scheme="http", host="3.3.3.3", port=80),
+            ],
+        )
+        results = [
+            CheckResult(alive=True, latency_ms=10.0),
+            CheckResult(alive=False, latency_ms=None),
+        ]
+        with patch(
+            "app.worker.health_service.check_proxy",
+            new=AsyncMock(side_effect=results),
+        ), patch("app.worker.broadcast_sync") as mock_broadcast:
+            check_all_proxies()
+
+        mock_broadcast.assert_called_once_with(
+            "stats", {"total": 3, "alive": 1, "dead": 2, "unknown": 0}
+        )
+
+    def test_broadcasts_zero_stats_for_empty_pool(self, engine):
+        from app.worker import check_all_proxies
+
+        with patch("app.worker.broadcast_sync") as mock_broadcast:
+            check_all_proxies()
+
+        mock_broadcast.assert_called_once_with(
+            "stats", {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
+        )
+
+
 class TestBeatSchedule:
     def test_schedule_is_fixed_tick(self):
         from app.worker import celery_app
@@ -283,7 +321,9 @@ class TestFetchDueSources:
                     interval_minutes=60,
                 )
             )
-            session.add(ProxySource(name="disabled", url="https://example.com/c.txt", enabled=False))
+            session.add(
+                ProxySource(name="disabled", url="https://example.com/c.txt", enabled=False)
+            )
             session.commit()
 
         with patch(

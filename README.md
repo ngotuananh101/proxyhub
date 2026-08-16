@@ -244,6 +244,8 @@ HEALTH_CHECK_CONCURRENCY=50
 
 # Gateway
 GATEWAY_API_URL=http://localhost:8000/internal/proxies
+# Where the gateway pushes request logs (defaults to <GATEWAY_API_URL minus last segment>/logs)
+GATEWAY_LOG_URL=http://localhost:8000/internal/logs
 # Internal key for the Gateway to authenticate against the Backend's internal API
 INTERNAL_API_KEY=change_me_internal_key
 ```
@@ -301,6 +303,13 @@ Go to Dashboard → **`Sources`** to manage free proxy list feeds. Each source i
 - Proxies that have been `dead` for longer than the retention period (Settings → *Dead proxy retention*, default 7 days) are removed automatically on each source fetch.
 - The download timeout is configurable in Settings → *Source fetch timeout*.
 
+### 5. Realtime Dashboard & Request Logs
+
+The Dashboard updates live over a WebSocket (`/ws/events`, authenticated with your JWT):
+
+- **Stats refresh automatically** — when a health check cycle finishes, the proxy counts on the Proxies page update without a manual reload.
+- **Request logs stream in live** — every request that passes through the Gateway is pushed to the Backend (`POST /internal/logs`) and appears instantly on the **`Logs`** page (client IP, method, host, path, the proxy used, and response size). The page also loads the most recent 100 entries from the database, so history survives restarts.
+
 ## 🧠 Proxy Rotation Logic (Gateway Plugin)
 
 The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`**. For each incoming request:
@@ -335,7 +344,7 @@ The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`*
 - [x] Automatic Celery Health Check
 - [ ] Multi-tenant: Assign Users/API Keys to separate Pools
 - [ ] Sticky Session: Keep the same IP for a `session_id` for N minutes
-- [ ] WebSocket Realtime Logs: View request logs live on the Dashboard
+- [x] WebSocket Realtime Logs: View request logs live on the Dashboard
 - [ ] Docker Compose: A single **`docker compose up`** command to run the whole system
 
 ## 🤝 Contributing

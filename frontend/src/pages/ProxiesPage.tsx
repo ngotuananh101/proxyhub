@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
+import { useRealtime } from '@/hooks/useRealtime'
 
 const statusItems = [
   { label: 'All', value: 'all' },
@@ -61,6 +62,13 @@ export default function ProxiesPage() {
   const [showForm, setShowForm] = useState(false)
   const [checking, setChecking] = useState(false)
   const queryClient = useQueryClient()
+
+  // Refresh stats live when a health check cycle finishes
+  useRealtime((event) => {
+    if (event.topic === 'stats') {
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    }
+  })
 
   const handleCheckAll = async () => {
     setChecking(true)

@@ -6,6 +6,7 @@ import { AppLayout } from './components/layout/AppLayout'
 import { Toaster } from './components/ui/toast'
 import { TooltipProvider } from './components/ui/tooltip'
 import LoginPage from './pages/LoginPage'
+import LogsPage from './pages/LogsPage'
 import ProxiesPage from './pages/ProxiesPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
@@ -37,6 +38,7 @@ export default function App() {
               >
                 <Route path="/" element={<ProxiesPage />} />
                 <Route path="/sources" element={<SourcesPage />} />
+                <Route path="/logs" element={<LogsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
               </Route>
