@@ -135,6 +135,26 @@ def test_put_rejects_empty_string(client, auth_headers):
     assert resp.status_code == 400
 
 
+def test_put_timezone_accepts_iana_zone(client, auth_headers):
+    resp = client.put(
+        "/api/settings",
+        json={"values": {"TIMEZONE": "Asia/Ho_Chi_Minh"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["values"]["TIMEZONE"] == "Asia/Ho_Chi_Minh"
+
+
+def test_put_timezone_rejects_unknown_zone(client, auth_headers):
+    resp = client.put(
+        "/api/settings",
+        json={"values": {"TIMEZONE": "Not/AZone"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    assert "TIMEZONE" in resp.json()["detail"]
+
+
 def test_seed_is_idempotent_and_preserves_overrides(engine, auth_headers, client):
     client.put(
         "/api/settings",

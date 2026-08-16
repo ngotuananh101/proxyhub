@@ -14,6 +14,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useRealtime } from '@/hooks/useRealtime'
+import { useTimezone } from '@/hooks/use-timezone'
+import { formatTime } from '@/lib/datetime'
 
 const MAX_ROWS = 200
 
@@ -25,6 +27,7 @@ function formatBytes(n: number | null): string {
 }
 
 export default function LogsPage() {
+  const timezone = useTimezone()
   const { data, isPending } = useQuery({
     queryKey: ['logs'],
     queryFn: () => fetchLogs(MAX_ROWS),
@@ -86,7 +89,7 @@ export default function LogsPage() {
               {rows.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                    {new Date(log.created_at).toLocaleTimeString()}
+                    {formatTime(log.created_at, timezone)}
                   </TableCell>
                   <TableCell className="text-xs">{log.client_ip ?? '—'}</TableCell>
                   <TableCell>

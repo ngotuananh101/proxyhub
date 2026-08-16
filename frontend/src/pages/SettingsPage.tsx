@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchSettings, updateSettings, type SettingItem } from '@/api/settings'
 import { Button } from '@/components/ui/button'
@@ -18,9 +18,20 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
+import { listTimezones } from '@/lib/datetime'
+
+const TIMEZONE_KEY = 'TIMEZONE'
 
 function errorDetail(err: unknown, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: string } } })?.response
@@ -45,11 +56,16 @@ export default function SettingsPage() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const timezones = useMemo(() => listTimezones(), [])
+
   useEffect(() => {
     if (data) {
       setValues(Object.fromEntries(data.items.map((item) => [item.key, String(item.value)])))
     }
   }, [data])
+
+  const timezoneItem = data?.items.find((item) => item.key === TIMEZONE_KEY)
+  const otherItems = data?.items.filter((item) => item.key !== TIMEZONE_KEY)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,15 +92,8 @@ export default function SettingsPage() {
             the next check cycle.
           </p>
         </div>
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CardTitle>Health Check</CardTitle>
-            <CardDescription>
-              Values are seeded from .env on first startup and can be overridden
-              here at any time.
-            </CardDescription>
-          </CardHeader>
-          {isPending ? (
+        {isPending ? (
+          <Card className="max-w-2xl">
             <CardContent>
               <div className="flex flex-col gap-4">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -92,11 +101,64 @@ export default function SettingsPage() {
                 ))}
               </div>
             </CardContent>
-          ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
+          </Card>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-4">
+            {timezoneItem && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>General</CardTitle>
+                  <CardDescription>
+                    Applies to every date and time shown in the dashboard.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <FieldGroup className="gap-4">
+                    <Field data-invalid={!!error}>
+                      <FieldLabel htmlFor={`setting-${TIMEZONE_KEY}`}>
+                        {timezoneItem.label}
+                      </FieldLabel>
+                      <Select
+                        value={values[TIMEZONE_KEY] ?? ''}
+                        onValueChange={(value) => {
+                          if (value === null) return
+                          setValues((prev) => ({ ...prev, [TIMEZONE_KEY]: value }))
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`setting-${TIMEZONE_KEY}`}
+                          aria-invalid={!!error}
+                          className="w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {timezones.map((zone) => (
+                              <SelectItem key={zone} value={zone}>
+                                {zone}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FieldDescription>{timezoneItem.description}</FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                </CardContent>
+              </Card>
+            )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Health Check</CardTitle>
+                <CardDescription>
+                  Values are seeded from .env on first startup and can be overridden
+                  here at any time.
+                </CardDescription>
+              </CardHeader>
               <CardContent>
                 <FieldGroup className="gap-4">
-                  {data?.items.map((item) => (
+                  {otherItems?.map((item) => (
                     <Field key={item.key} data-invalid={!!error}>
                       <FieldLabel htmlFor={`setting-${item.key}`}>{item.label}</FieldLabel>
                       <Input
@@ -127,9 +189,9 @@ export default function SettingsPage() {
                   Save changes
                 </Button>
               </CardFooter>
-            </form>
-          )}
-        </Card>
+            </Card>
+          </form>
+        )}
       </div>
     </ScrollArea>
   )

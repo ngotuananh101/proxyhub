@@ -3,6 +3,7 @@ from sqlmodel import Session, col, func, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
+from app.core.datetime_utils import utc_isoformat
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.user import User
 from app.schemas.proxy import (
@@ -30,9 +31,9 @@ def _proxy_to_response(p: Proxy) -> ProxyResponse:
         password=p.password,
         status=p.status.value,
         latency_ms=p.latency_ms,
-        last_checked_at=p.last_checked_at.isoformat() if p.last_checked_at else None,
-        created_at=p.created_at.isoformat(),
-        updated_at=p.updated_at.isoformat(),
+        last_checked_at=utc_isoformat(p.last_checked_at) if p.last_checked_at else None,
+        created_at=utc_isoformat(p.created_at),
+        updated_at=utc_isoformat(p.updated_at),
     )
 
 

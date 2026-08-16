@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
+from app.core.datetime_utils import utc_isoformat
 from app.models.log import RequestLog
 from app.models.user import User
 from app.schemas.log import RequestLogResponse
@@ -20,7 +21,7 @@ def _to_response(log: RequestLog) -> RequestLogResponse:
         proxy_host=log.proxy_host,
         proxy_port=log.proxy_port,
         response_bytes=log.response_bytes,
-        created_at=log.created_at.isoformat(),
+        created_at=utc_isoformat(log.created_at),
     )
 
 

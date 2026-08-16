@@ -4,6 +4,7 @@ from sqlmodel import Session
 
 from app.api.deps import verify_internal_key
 from app.core.database import get_session
+from app.core.datetime_utils import utc_isoformat
 from app.models.log import RequestLog
 from app.schemas.log import RequestLogResponse
 from app.schemas.proxy import InternalProxyResponse
@@ -71,7 +72,7 @@ def receive_gateway_log(
         proxy_host=log.proxy_host,
         proxy_port=log.proxy_port,
         response_bytes=log.response_bytes,
-        created_at=log.created_at.isoformat(),
+        created_at=utc_isoformat(log.created_at),
     )
     broadcast_sync("logs", response.model_dump())
     return response

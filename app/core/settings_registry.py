@@ -82,5 +82,15 @@ REGISTRY: dict[str, SettingDef] = {
             min=0,
             max=365,
         ),
+        SettingDef(
+            key="TIMEZONE",
+            label="Timezone",
+            description=(
+                "IANA timezone used to display dates and times in the "
+                "dashboard, e.g. UTC or Asia/Ho_Chi_Minh."
+            ),
+            type="string",
+            default="UTC",
+        ),
     ]
 }

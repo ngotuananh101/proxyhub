@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_session
+from app.core.datetime_utils import utc_isoformat
 from app.models.source import ProxySource
 from app.models.user import User
 from app.schemas.source import SourceCreate, SourceResponse, SourceUpdate
@@ -19,9 +20,9 @@ def _to_response(s: ProxySource) -> SourceResponse:
         url=s.url,
         enabled=s.enabled,
         interval_minutes=s.interval_minutes,
-        last_fetched_at=s.last_fetched_at.isoformat() if s.last_fetched_at else None,
+        last_fetched_at=utc_isoformat(s.last_fetched_at) if s.last_fetched_at else None,
         last_status=s.last_status,
-        created_at=s.created_at.isoformat(),
+        created_at=utc_isoformat(s.created_at),
     )
 
 

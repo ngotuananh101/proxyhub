@@ -24,6 +24,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/components/ui/toast'
+import { useTimezone } from '@/hooks/use-timezone'
+import { formatDateTime } from '@/lib/datetime'
 
 function StatusBadge({ source }: { source: SourceItem }) {
   if (!source.last_status) {
@@ -39,6 +41,7 @@ function StatusBadge({ source }: { source: SourceItem }) {
 
 export default function SourcesPage() {
   const queryClient = useQueryClient()
+  const timezone = useTimezone()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SourceItem | null>(null)
   const [fetchingId, setFetchingId] = useState<number | null>(null)
@@ -150,7 +153,7 @@ export default function SourcesPage() {
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm">
                     {source.last_fetched_at
-                      ? new Date(source.last_fetched_at).toLocaleString()
+                      ? formatDateTime(source.last_fetched_at, timezone)
                       : '—'}
                   </TableCell>
                   <TableCell className="max-w-56">

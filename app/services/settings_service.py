@@ -1,5 +1,6 @@
 from sqlmodel import Session, select
 
+from app.core.datetime_utils import is_valid_timezone
 from app.core.settings_registry import REGISTRY, SettingDef
 from app.models.setting import AppSetting
 
@@ -23,6 +24,10 @@ def _parse(defn: SettingDef, raw: str) -> str | int | float:
         value = str(raw).strip()
         if not value:
             raise SettingValidationError(f"{defn.key}: must not be empty")
+        if defn.key == "TIMEZONE" and not is_valid_timezone(value):
+            raise SettingValidationError(
+                f"{defn.key}: unknown IANA timezone '{value}'"
+            )
         return value
 
     if defn.min is not None and value < defn.min:
