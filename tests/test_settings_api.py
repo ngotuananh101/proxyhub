@@ -39,6 +39,17 @@ def user_headers_fixture(engine, client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_startup_seeds_settings_rows(engine):
+    from app.main import create_app
+
+    with TestClient(create_app(engine)):
+        pass  # entering the context manager runs the lifespan startup
+
+    with Session(engine) as session:
+        rows = session.exec(select(AppSetting)).all()
+    assert {r.key for r in rows} == set(REGISTRY.keys())
+
+
 def test_get_settings_returns_all_registry_items(client, auth_headers):
     resp = client.get("/api/settings", headers=auth_headers)
     assert resp.status_code == 200

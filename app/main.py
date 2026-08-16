@@ -41,8 +41,6 @@ def create_app(db_engine=None):
 
     if db_engine is not None:
         # Override get_session dependency for testing
-        from sqlmodel import Session
-
         from app.core.database import get_session
 
         def override_get_session():
