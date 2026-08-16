@@ -5,51 +5,67 @@ export interface RealtimeEvent {
   data: Record<string, unknown>
 }
 
+type Listener = (event: RealtimeEvent) => void
+
 /**
- * Subscribe to the backend realtime feed (/ws/events), authenticated with
- * the stored JWT. Reconnects with backoff; cleans up on unmount.
+ * One shared WebSocket to /ws/events for the whole app. Pages subscribe via
+ * useRealtime and get events fanned out to them; switching tabs does not
+ * reopen the connection. Reconnects with backoff while at least one page is
+ * subscribed, and closes once the last one unmounts.
  */
-export function useRealtime(onEvent: (event: RealtimeEvent) => void) {
+const listeners = new Set<Listener>()
+let socket: WebSocket | null = null
+let retry = 0
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+
+function connect() {
+  const token = localStorage.getItem('access_token')
+  if (!token) return
+
+  const base = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') as string
+  const url = `${base}/ws/events?token=${encodeURIComponent(token)}`
+
+  socket = new WebSocket(url)
+  socket.onmessage = (e) => {
+    try {
+      const event = JSON.parse(e.data) as RealtimeEvent
+      listeners.forEach((listener) => listener(event))
+    } catch {
+      // ignore malformed frames
+    }
+  }
+  socket.onopen = () => {
+    retry = 0
+  }
+  socket.onclose = () => {
+    socket = null
+    if (listeners.size === 0) return
+    const delay = Math.min(1000 * 2 ** retry, 15000)
+    retry += 1
+    retryTimer = setTimeout(connect, delay)
+  }
+}
+
+function subscribe(listener: Listener) {
+  listeners.add(listener)
+  if (!socket) connect()
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) {
+      clearTimeout(retryTimer)
+      socket?.close()
+      socket = null
+    }
+  }
+}
+
+/**
+ * Subscribe the current page to the shared realtime feed. The underlying
+ * socket is shared across pages and survives tab switches.
+ */
+export function useRealtime(onEvent: Listener) {
   const handlerRef = useRef(onEvent)
   handlerRef.current = onEvent
 
-  useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    const base = (import.meta.env.VITE_WS_URL || 'ws://localhost:8000') as string
-    const url = `${base}/ws/events?token=${encodeURIComponent(token)}`
-
-    let ws: WebSocket | null = null
-    let closed = false
-    let retry = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    const connect = () => {
-      ws = new WebSocket(url)
-      ws.onmessage = (e) => {
-        try {
-          handlerRef.current(JSON.parse(e.data))
-        } catch {
-          // ignore malformed frames
-        }
-      }
-      ws.onclose = () => {
-        if (closed) return
-        const delay = Math.min(1000 * 2 ** retry, 15000)
-        retry += 1
-        timer = setTimeout(connect, delay)
-      }
-      ws.onopen = () => {
-        retry = 0
-      }
-    }
-
-    connect()
-    return () => {
-      closed = true
-      if (timer) clearTimeout(timer)
-      ws?.close()
-    }
-  }, [])
+  useEffect(() => subscribe((event) => handlerRef.current(event)), [])
 }
