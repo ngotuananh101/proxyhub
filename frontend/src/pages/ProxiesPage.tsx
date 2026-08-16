@@ -15,6 +15,7 @@ import {
   deleteProxy,
   fetchProxies,
   triggerCheckAll,
+  type StatsSummary,
 } from '@/api/proxies'
 import { AddProxyDialog } from '@/components/proxies/AddProxyDialog'
 import { ImportDialog } from '@/components/proxies/ImportDialog'
@@ -66,10 +67,12 @@ export default function ProxiesPage() {
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
 
-  // Refresh stats and the table live as health check results stream in
+  // Refresh stats and the table live as health check results stream in.
+  // The stats payload is complete, so write it straight into the query
+  // cache; only the paginated table needs a refetch.
   useRealtime((event) => {
     if (event.topic === 'stats') {
-      queryClient.invalidateQueries({ queryKey: ['stats'] })
+      queryClient.setQueryData(['stats'], event.data as unknown as StatsSummary)
       queryClient.invalidateQueries({ queryKey: ['proxies'] })
     }
   })
