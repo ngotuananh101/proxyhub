@@ -55,14 +55,19 @@ class TestImportSourceText:
         imported, duplicates = import_source_text(session, text)
         assert (imported, duplicates) == (1, 0)
 
-    def test_does_not_touch_existing_proxy_status(self, session):
+    def test_resets_duplicate_dead_proxy_status_to_unknown(self, session):
         session.add(
-            Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE)
+            Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.DEAD)
+        )
+        session.add(
+            Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.ALIVE)
         )
         session.commit()
-        import_source_text(session, "1.1.1.1:80")
-        proxy = session.exec(select(Proxy)).one()
-        assert proxy.status == ProxyStatus.ALIVE
+        imported, duplicates = import_source_text(session, "1.1.1.1:80\n2.2.2.2:80")
+        assert (imported, duplicates) == (0, 2)
+        proxies = {p.host: p for p in session.exec(select(Proxy)).all()}
+        assert proxies["1.1.1.1"].status == ProxyStatus.UNKNOWN
+        assert proxies["2.2.2.2"].status == ProxyStatus.ALIVE
 
     def test_duplicate_check_is_a_single_bulk_query(self, session):
         """One SELECT for all lines, not one per line.

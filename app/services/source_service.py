@@ -57,19 +57,25 @@ def import_source_text(session: Session, text: str) -> tuple[int, int]:
         return 0, 0
 
     keys = [(item["scheme"], item["host"], item["port"]) for item in parsed]
-    existing = session.exec(
-        select(Proxy.scheme, Proxy.host, Proxy.port).where(
+    existing_proxies = session.exec(
+        select(Proxy).where(
             tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(keys)
         )
     ).all()
-    existing_keys = set(existing)
+    existing_map = {(p.scheme, p.host, p.port): p for p in existing_proxies}
 
     imported = 0
     duplicates = 0
+    now = datetime.now(timezone.utc)
     for item in parsed:
         key = (item["scheme"], item["host"], item["port"])
-        if key in existing_keys:
+        if key in existing_map:
             duplicates += 1
+            proxy = existing_map[key]
+            if proxy.status == ProxyStatus.DEAD:
+                proxy.status = ProxyStatus.UNKNOWN
+                proxy.updated_at = now
+                session.add(proxy)
             continue
         session.add(Proxy(**item))
         imported += 1
