@@ -37,11 +37,9 @@ if not exist frontend\node_modules (
     popd
 )
 
-REM --- Chua co DB thi nhac tao tai khoan ---
-if not exist proxyhub.db (
-    echo [!] Chua co proxyhub.db - sau khi Backend chay, tao tai khoan dau tien bang:
-    echo     venv\Scripts\python -m app.cli create-admin --username admin --email a@b.c --password ^<password^>
-)
+REM --- Chua co DB Postgres thi nhac tao tai khoan ---
+echo [!] Neu database Postgres con trong, tao tai khoan dau tien bang:
+echo     venv\Scripts\python -m app.cli create-admin --username admin --email a@b.c --password ^<password^>
 
 REM --- Read GATEWAY_API_URL, GATEWAY_LOG_URL and INTERNAL_API_KEY from .env (CRLF-tolerant) ---
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$l=@(Get-Content .env | Where-Object {$_ -like 'INTERNAL_API_KEY=*'}); if($l){($l[0] -split '=',2)[1]} else {''}"`) do set "INTERNAL_API_KEY=%%v"

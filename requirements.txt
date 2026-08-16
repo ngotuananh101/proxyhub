@@ -12,3 +12,4 @@ proxy.py==2.4.10
 celery>=5.4.0
 redis>=5.0.0
 tzdata>=2024.1
+psycopg[binary]>=3.2.0

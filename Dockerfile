@@ -19,9 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code
 COPY app/ ./app/
-
-# Create data directory for SQLite database storage
-RUN mkdir -p /app/data
+COPY scripts/ ./scripts/
 
 EXPOSE 8000 8899
 

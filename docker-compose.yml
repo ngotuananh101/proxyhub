@@ -14,6 +14,24 @@ services:
     networks:
       - proxyhub-network
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: proxyhub-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=proxyhub
+      - POSTGRES_PASSWORD=proxyhub
+      - POSTGRES_DB=proxyhub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxyhub -d proxyhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - proxyhub-network
+
   backend:
     build:
       context: .
@@ -24,13 +42,13 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    volumes:
-      - app_data:/app/data
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - proxyhub-network
@@ -45,11 +63,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    volumes:
-      - app_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
@@ -68,11 +84,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=sqlite:////app/data/proxyhub.db
+      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    volumes:
-      - app_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
@@ -114,7 +128,7 @@ services:
       - proxyhub-network
 
 volumes:
-  app_data:
+  postgres_data:
   redis_data:
 
 networks:
