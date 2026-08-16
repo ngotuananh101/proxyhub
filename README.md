@@ -6,7 +6,31 @@ ProxyHub is an open-source full-stack application for managing, health-checking,
 
 ## 📸 Screenshots
 
-> _(To be added once the Dashboard is finalized)_
+<p align="center">
+  <img src="screenshot/proxy-page.png" alt="Proxies Management" width="100%">
+  <em>Proxies management dashboard with real-time health metrics, status filtering, and bulk operations</em>
+</p>
+
+<details>
+<summary><b>🖼️ View More Screenshots (Sources, Live Logs, Settings, Profile & Login)</b></summary>
+<br>
+
+### 📥 Auto Proxy Sources
+![Proxy Sources](screenshot/source-page.png)
+
+### 📊 Real-time Request Logs Feed
+![Request Logs](screenshot/logs-page.png)
+
+### ⚙️ Runtime Settings & Health Check Configuration
+![Settings](screenshot/setting-page.png)
+
+### 👤 Profile & Password Management
+![Profile](screenshot/profile-page.png)
+
+### 🔐 Authentication
+![Login](screenshot/login-page.png)
+
+</details>
 
 ## 📑 Table of Contents
 
