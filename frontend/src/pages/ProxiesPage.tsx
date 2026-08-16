@@ -128,11 +128,11 @@ export default function ProxiesPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Proxies</h1>
-          <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-xl font-semibold tracking-tight">Proxies</h1>
+          <p className="text-xs text-muted-foreground">
             Quản lý pool proxy của bạn
           </p>
         </div>
@@ -208,7 +208,7 @@ export default function ProxiesPage() {
           </EmptyDescription>
         </Empty>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           <ProxyTable
             proxies={data.items}
             selected={selected}

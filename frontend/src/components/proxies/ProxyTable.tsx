@@ -3,6 +3,7 @@ import type { ProxyItem } from '@/api/proxies'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table,
   TableBody,
@@ -37,7 +38,7 @@ export function ProxyTable({
   const someSelected = selected.size > 0 && !allSelected
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-card">
+    <ScrollArea className="min-h-0 flex-1 bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -105,6 +106,6 @@ export function ProxyTable({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </ScrollArea>
   )
 }

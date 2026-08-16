@@ -6,7 +6,7 @@ import {
   GlobeIcon,
 } from 'lucide-react'
 import { fetchStats } from '@/api/proxies'
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const cards = [
@@ -20,19 +20,21 @@ export function StatCards() {
   const { data, isPending } = useQuery({ queryKey: ['stats'], queryFn: fetchStats })
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <Card key={card.key}>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardDescription>{card.label}</CardDescription>
-            <card.icon className="text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {isPending || !data ? (
-              <Skeleton className="h-7 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums">{data[card.key]}</p>
-            )}
+        <Card key={card.key} size="sm">
+          <CardContent className="flex items-center gap-2.5">
+            <card.icon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm text-muted-foreground">
+              {card.label}
+            </span>
+            <span className="ml-auto text-lg font-semibold tabular-nums">
+              {isPending || !data ? (
+                <Skeleton className="h-6 w-10" />
+              ) : (
+                data[card.key]
+              )}
+            </span>
           </CardContent>
         </Card>
       ))}
