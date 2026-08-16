@@ -23,13 +23,14 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
-import { listTimezones } from '@/lib/datetime'
+import { COMMON_TIMEZONES, listTimezones } from '@/lib/datetime'
 
 const TIMEZONE_KEY = 'TIMEZONE'
 
@@ -134,6 +135,15 @@ export default function SettingsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
+                            <SelectLabel>Common</SelectLabel>
+                            {COMMON_TIMEZONES.map((zone) => (
+                              <SelectItem key={zone.value} value={zone.value}>
+                                {zone.label}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                          <SelectGroup>
+                            <SelectLabel>All timezones</SelectLabel>
                             {timezones.map((zone) => (
                               <SelectItem key={zone} value={zone}>
                                 {zone}

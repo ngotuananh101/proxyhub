@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateTime, formatTime, listTimezones } from '@/lib/datetime'
+import { COMMON_TIMEZONES, formatDateTime, formatTime, listTimezones } from '@/lib/datetime'
 
 describe('formatDateTime', () => {
   it('renders a UTC instant in the UTC zone', () => {
@@ -26,6 +26,21 @@ describe('formatDateTime', () => {
 describe('formatTime', () => {
   it('renders only the time part in the given zone', () => {
     expect(formatTime('2026-08-16T12:30:45+00:00', 'UTC')).toBe('12:30:45 PM')
+  })
+})
+
+describe('COMMON_TIMEZONES', () => {
+  it('surfaces a friendly Vietnam entry with its UTC offset', () => {
+    const vietnam = COMMON_TIMEZONES.find((z) => z.value === 'Asia/Ho_Chi_Minh')
+    expect(vietnam).toBeDefined()
+    expect(vietnam?.label).toContain('Vietnam')
+    expect(vietnam?.label).toContain('GMT+07:00')
+  })
+
+  it('keeps UTC at a friendly position', () => {
+    expect(
+      COMMON_TIMEZONES.find((z) => z.value === 'UTC')?.label
+    ).toContain('Coordinated Universal Time')
   })
 })
 
