@@ -18,6 +18,38 @@ def _worker_engine(engine, monkeypatch):
     monkeypatch.setattr(app.worker, "_get_engine", lambda: engine)
 
 
+class _FakeLock:
+    """In-memory stand-in for redis.lock.Lock."""
+
+    def __init__(self, held: set[str], name: str):
+        self._held = held
+        self.name = name
+
+    def acquire(self, blocking: bool = True) -> bool:
+        if self.name in self._held:
+            return False
+        self._held.add(self.name)
+        return True
+
+    def release(self) -> None:
+        self._held.discard(self.name)
+
+
+@pytest.fixture(autouse=True)
+def _fake_locks(monkeypatch):
+    """Keep the task locks off a real Redis; expose the held-lock names."""
+    import app.worker
+
+    held: set[str] = set()
+
+    class _FakeClient:
+        def lock(self, name, timeout=None):
+            return _FakeLock(held, name)
+
+    monkeypatch.setattr(app.worker, "_get_lock_client", lambda: _FakeClient())
+    return held
+
+
 def _seed(engine, proxies: list[Proxy]) -> list[int]:
     with Session(engine) as session:
         for p in proxies:
@@ -286,6 +318,63 @@ class TestStatsBroadcast:
         mock_broadcast.assert_called_once_with(
             "stats", {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
         )
+
+
+class TestTaskLocking:
+    def test_check_skips_when_lock_held(self, engine, _fake_locks):
+        from app.worker import CHECK_LOCK_NAME, check_all_proxies
+
+        _seed(engine, [Proxy(scheme="http", host="1.1.1.1", port=80)])
+        _fake_locks.add(CHECK_LOCK_NAME)  # another cycle is running
+
+        with patch("app.worker.health_service.check_proxy") as mock_check:
+            assert check_all_proxies(force=True) == 0
+
+        mock_check.assert_not_called()
+
+    def test_check_releases_lock_after_run(self, engine, _fake_locks):
+        from app.services.health_service import CheckResult
+        from app.worker import CHECK_LOCK_NAME, check_all_proxies
+
+        _seed(engine, [Proxy(scheme="http", host="1.1.1.1", port=80)])
+        with patch(
+            "app.worker.health_service.check_proxy",
+            new=AsyncMock(return_value=CheckResult(alive=True, latency_ms=1.0)),
+        ):
+            assert check_all_proxies() == 1
+
+        assert CHECK_LOCK_NAME not in _fake_locks
+
+    def test_check_releases_lock_on_error(self, engine, _fake_locks):
+        from app.worker import CHECK_LOCK_NAME, check_all_proxies
+
+        _seed(engine, [Proxy(scheme="http", host="1.1.1.1", port=80)])
+        with patch(
+            "app.worker.health_service.check_proxy",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            with pytest.raises(RuntimeError):
+                check_all_proxies()
+
+        assert CHECK_LOCK_NAME not in _fake_locks
+
+    def test_fetch_skips_when_lock_held(self, engine, _fake_locks):
+        from app.worker import FETCH_LOCK_NAME, fetch_due_sources
+
+        _fake_locks.add(FETCH_LOCK_NAME)
+
+        with patch("app.worker.fetch_and_import") as mock_fetch:
+            assert fetch_due_sources() == 0
+
+        mock_fetch.assert_not_called()
+
+    def test_fetch_releases_lock_after_run(self, engine, _fake_locks):
+        from app.worker import FETCH_LOCK_NAME, fetch_due_sources
+
+        with patch("app.worker.fetch_and_import", return_value="ok"):
+            fetch_due_sources()
+
+        assert FETCH_LOCK_NAME not in _fake_locks
 
 
 class TestBeatSchedule:

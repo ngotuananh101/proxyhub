@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, timezone
 
 from celery import Celery
+from redis import Redis
+from redis.exceptions import LockError
 from sqlmodel import Session, col, select
 
 from app.core import database
@@ -45,6 +47,39 @@ LAST_RUN_KEY = "HEALTH_CHECK_LAST_RUN_AT"
 def _get_engine():
     """Indirection so tests can swap in an in-memory DB engine."""
     return database.engine
+
+
+# Beat ticks every 60s but a cycle can run for minutes, and "Check now" can
+# fire mid-cycle. A Redis lock makes overlapping dispatches skip instead of
+# doubling the load on the proxy pool. The TTL releases the lock if a worker
+# dies mid-run.
+CHECK_LOCK_NAME = "proxyhub:check_all_proxies"
+FETCH_LOCK_NAME = "proxyhub:fetch_due_sources"
+LOCK_TIMEOUT = 900.0
+
+
+def _get_lock_client() -> Redis:
+    """Indirection so tests can swap in a fake Redis client."""
+    return Redis.from_url(settings.CELERY_BROKER_URL)
+
+
+def _acquire_lock(name: str):
+    """Try to take a named lock without waiting. Returns None if held."""
+    lock = _get_lock_client().lock(name, timeout=LOCK_TIMEOUT)
+    try:
+        if lock.acquire(blocking=False):
+            return lock
+    except LockError as e:
+        logger.warning("Could not acquire lock %s: %s", name, e)
+    return None
+
+
+def _release_lock(lock) -> None:
+    try:
+        lock.release()
+    except LockError:
+        # TTL already expired or the lock was lost; nothing to clean up.
+        pass
 
 
 def _broadcast_stats(session: Session) -> None:
@@ -106,50 +141,61 @@ def check_all_proxies(force: bool = False) -> int:
     Beat fires every 60s; the task skips unless HEALTH_CHECK_INTERVAL has
     elapsed since the last run, so the interval is editable at runtime.
     """
-    with Session(_get_engine()) as session:
-        values = get_settings(session)
-        interval = float(values["HEALTH_CHECK_INTERVAL"])
-        if not force:
-            elapsed = _seconds_since_last_run(session)
-            if elapsed is not None and elapsed < interval:
-                logger.debug("Skipping: %.0fs since last run, interval is %.0fs", elapsed, interval)
+    lock = _acquire_lock(CHECK_LOCK_NAME)
+    if lock is None:
+        logger.info("A health check cycle is already running; skipping")
+        return 0
+    try:
+        with Session(_get_engine()) as session:
+            values = get_settings(session)
+            interval = float(values["HEALTH_CHECK_INTERVAL"])
+            if not force:
+                elapsed = _seconds_since_last_run(session)
+                if elapsed is not None and elapsed < interval:
+                    logger.debug(
+                        "Skipping: %.0fs since last run, interval is %.0fs", elapsed, interval
+                    )
+                    return 0
+
+            proxies = session.exec(
+                select(Proxy).where(
+                    col(Proxy.scheme).in_(CHECKABLE_SCHEMES),
+                    col(Proxy.status).in_(CHECKABLE_STATUSES),
+                )
+            ).all()
+            if not proxies:
+                logger.info("No checkable proxies found")
+                _mark_last_run(session)
+                _broadcast_stats(session)
                 return 0
 
-        proxies = session.exec(
-            select(Proxy).where(
-                col(Proxy.scheme).in_(CHECKABLE_SCHEMES),
-                col(Proxy.status).in_(CHECKABLE_STATUSES),
+            results = asyncio.run(
+                _check_all(
+                    proxies,
+                    url=str(values["HEALTH_CHECK_URL"]),
+                    timeout=float(values["HEALTH_CHECK_TIMEOUT"]),
+                    concurrency=int(values["HEALTH_CHECK_CONCURRENCY"]),
+                )
             )
-        ).all()
-        if not proxies:
-            logger.info("No checkable proxies found")
+
+            now = datetime.now(timezone.utc)
+            for proxy, result in zip(proxies, results):
+                proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
+                proxy.latency_ms = result.latency_ms
+                proxy.last_checked_at = now
+                proxy.updated_at = now
+                session.add(proxy)
             _mark_last_run(session)
+            session.commit()
             _broadcast_stats(session)
-            return 0
 
-        results = asyncio.run(
-            _check_all(
-                proxies,
-                url=str(values["HEALTH_CHECK_URL"]),
-                timeout=float(values["HEALTH_CHECK_TIMEOUT"]),
-                concurrency=int(values["HEALTH_CHECK_CONCURRENCY"]),
-            )
+        alive = sum(1 for r in results if r.alive)
+        logger.info(
+            "Checked %d proxies: %d alive, %d dead", len(results), alive, len(results) - alive
         )
-
-        now = datetime.now(timezone.utc)
-        for proxy, result in zip(proxies, results):
-            proxy.status = ProxyStatus.ALIVE if result.alive else ProxyStatus.DEAD
-            proxy.latency_ms = result.latency_ms
-            proxy.last_checked_at = now
-            proxy.updated_at = now
-            session.add(proxy)
-        _mark_last_run(session)
-        session.commit()
-        _broadcast_stats(session)
-
-    alive = sum(1 for r in results if r.alive)
-    logger.info("Checked %d proxies: %d alive, %d dead", len(results), alive, len(results) - alive)
-    return len(results)
+        return len(results)
+    finally:
+        _release_lock(lock)
 
 
 @celery_app.task(name="app.worker.fetch_due_sources")
@@ -159,20 +205,29 @@ def fetch_due_sources() -> int:
     Beat fires every 60s; each source is gated on its own interval_minutes,
     so intervals are editable at runtime.
     """
-    fetched = 0
-    with Session(_get_engine()) as session:
-        seed_default_sources(session)
-        values = get_settings(session)
-        timeout = float(values["SOURCE_FETCH_TIMEOUT"])
-        retention_days = float(values["DEAD_PROXY_RETENTION_DAYS"])
-        now = datetime.now(timezone.utc)
-        sources = session.exec(select(ProxySource)).all()
-        for source in sources:
-            if not is_due(source, now):
-                continue
-            fetch_and_import(session, source, timeout=timeout, retention_days=retention_days)
-            fetched += 1
+    lock = _acquire_lock(FETCH_LOCK_NAME)
+    if lock is None:
+        logger.info("A source fetch cycle is already running; skipping")
+        return 0
+    try:
+        fetched = 0
+        with Session(_get_engine()) as session:
+            seed_default_sources(session)
+            values = get_settings(session)
+            timeout = float(values["SOURCE_FETCH_TIMEOUT"])
+            retention_days = float(values["DEAD_PROXY_RETENTION_DAYS"])
+            now = datetime.now(timezone.utc)
+            sources = session.exec(select(ProxySource)).all()
+            for source in sources:
+                if not is_due(source, now):
+                    continue
+                fetch_and_import(
+                    session, source, timeout=timeout, retention_days=retention_days
+                )
+                fetched += 1
 
-    if fetched:
-        logger.info("Fetched %d proxy sources", fetched)
-    return fetched
+        if fetched:
+            logger.info("Fetched %d proxy sources", fetched)
+        return fetched
+    finally:
+        _release_lock(lock)
