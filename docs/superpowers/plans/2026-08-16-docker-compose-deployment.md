@@ -9,7 +9,7 @@
 - Multi-stage Node/Nginx container (`frontend/Dockerfile` + `frontend/nginx.conf`) serving the React SPA and acting as reverse proxy for `/api`, `/internal`, `/ws`, `/docs`, and `/openapi.json`.
 - Unified `docker-compose.yml` orchestrating all 6 services with health-checks, volume mounts, and network configuration.
 
-**Tech Stack:** Docker, Docker Compose, Nginx Alpine, Python 3.12-slim, Node.js 20-alpine, Vite, FastAPI, Celery, Redis 7.
+**Tech Stack:** Docker, Docker Compose, Nginx Alpine, Python 3.14-slim, Node.js 24-alpine, Vite, FastAPI, Celery, Redis 7.
 
 ## Global Constraints
 
@@ -172,7 +172,7 @@ npm-debug.log*
 Create `frontend/Dockerfile`:
 ```dockerfile
 # Stage 1: Build the React application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -246,7 +246,7 @@ docs
 
 Create `Dockerfile`:
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -2,8 +2,8 @@
 
 ## 1. Overview
 ProxyHub is a full-stack proxy pool manager and rotating gateway consisting of:
-- **Backend API**: FastAPI application (Python 3.12, SQLModel/SQLite, WebSockets, JWT auth).
-- **Frontend Dashboard**: React 19 SPA (Vite, TailwindCSS v4, shadcn base-sera UI, Nginx reverse proxy).
+- **Backend API**: FastAPI application (Python 3.14, SQLModel/SQLite, WebSockets, JWT auth).
+- **Frontend Dashboard**: React 19 SPA (Node.js 24, Vite, TailwindCSS v4, shadcn base-sera UI, Nginx reverse proxy).
 - **Proxy Gateway**: `proxy.py` HTTP proxy service with `RotateProxyPlugin` querying the backend internal API.
 - **Task Worker**: Celery worker running health-checks and proxy source ingestion.
 - **Task Scheduler**: Celery beat scheduling periodic health checks and source syncing.
@@ -13,14 +13,14 @@ ProxyHub is a full-stack proxy pool manager and rotating gateway consisting of:
 ## 2. Architecture & Container Specifications
 
 ### 2.1 Backend / Worker / Gateway / Beat Base Image (`Dockerfile`)
-- **Base**: `python:3.12-slim`
+- **Base**: `python:3.14-slim`
 - **Working Directory**: `/app`
 - **Dependencies**: `requirements.txt`
 - **Source Code**: `app/` and optional CLI scripts.
 - **Volume Mount Point**: `/app/data` for `proxyhub.db`.
 
 ### 2.2 Frontend Image (`frontend/Dockerfile` & `frontend/nginx.conf`)
-- **Stage 1 (Builder)**: `node:20-alpine`, `npm install`, `npm run build`.
+- **Stage 1 (Builder)**: `node:24-alpine`, `npm install`, `npm run build`.
 - **Stage 2 (Runtime)**: `nginx:alpine`
 - **Routing & Proxy Rules**:
   - `/` -> SPA static files (`/usr/share/nginx/html`), fallback to `index.html`.
