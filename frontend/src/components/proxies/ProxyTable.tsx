@@ -38,7 +38,7 @@ export function ProxyTable({
   const someSelected = selected.size > 0 && !allSelected
 
   return (
-    <ScrollArea className="sticky-table-header min-h-0 flex-1 bg-card">
+    <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
       <Table>
         <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
           <TableRow>

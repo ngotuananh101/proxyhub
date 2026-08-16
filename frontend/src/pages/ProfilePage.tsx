@@ -18,6 +18,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
 
@@ -200,26 +201,28 @@ export default function ProfilePage() {
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe })
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage your account information.
-        </p>
-      </div>
-
-      {user && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Signed in as</span>
-          <Badge variant="secondary">{user.username}</Badge>
-          {user.is_admin && <Badge>Admin</Badge>}
+    <ScrollArea className="h-full">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage your account information.
+          </p>
         </div>
-      )}
 
-      <div className="grid max-w-3xl gap-6">
-        <ProfileForm />
-        <PasswordForm />
+        {user && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Signed in as</span>
+            <Badge variant="secondary">{user.username}</Badge>
+            {user.is_admin && <Badge>Admin</Badge>}
+          </div>
+        )}
+
+        <div className="grid max-w-3xl gap-6">
+          <ProfileForm />
+          <PasswordForm />
+        </div>
       </div>
-    </div>
+    </ScrollArea>
   )
 }

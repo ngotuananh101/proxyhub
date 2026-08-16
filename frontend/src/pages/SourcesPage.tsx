@@ -89,7 +89,7 @@ export default function SourcesPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Sources</h1>
@@ -116,7 +116,7 @@ export default function SourcesPage() {
           ))}
         </div>
       ) : data && data.length > 0 ? (
-        <ScrollArea className="sticky-table-header min-h-0 flex-1 bg-card">
+        <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
           <Table>
             <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
               <TableRow>
@@ -154,7 +154,7 @@ export default function SourcesPage() {
                       : '—'}
                   </TableCell>
                   <TableCell className="max-w-56">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <StatusBadge source={source} />
                       {source.last_status && (
                         <span className="truncate text-xs text-muted-foreground">

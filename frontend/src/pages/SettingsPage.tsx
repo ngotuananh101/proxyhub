@@ -17,6 +17,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
@@ -66,68 +67,70 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Settings</h1>
-        <p className="text-xs text-muted-foreground">
-          Adjust health check behavior without editing .env. Changes apply from
-          the next check cycle.
-        </p>
-      </div>
-      <Card className="max-w-2xl">
-        <CardHeader>
-          <CardTitle>Health Check</CardTitle>
-          <CardDescription>
-            Values are seeded from .env on first startup and can be overridden
-            here at any time.
-          </CardDescription>
-        </CardHeader>
-        {isPending ? (
-          <CardContent>
-            <div className="flex flex-col gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-9 w-full" />
-              ))}
-            </div>
-          </CardContent>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
+    <ScrollArea className="h-full">
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Settings</h1>
+          <p className="text-xs text-muted-foreground">
+            Adjust health check behavior without editing .env. Changes apply from
+            the next check cycle.
+          </p>
+        </div>
+        <Card className="max-w-2xl">
+          <CardHeader>
+            <CardTitle>Health Check</CardTitle>
+            <CardDescription>
+              Values are seeded from .env on first startup and can be overridden
+              here at any time.
+            </CardDescription>
+          </CardHeader>
+          {isPending ? (
             <CardContent>
-              <FieldGroup className="gap-4">
-                {data?.items.map((item) => (
-                  <Field key={item.key} data-invalid={!!error}>
-                    <FieldLabel htmlFor={`setting-${item.key}`}>{item.label}</FieldLabel>
-                    <Input
-                      id={`setting-${item.key}`}
-                      type={item.type === 'string' ? 'text' : 'number'}
-                      step={item.type === 'float' ? 'any' : undefined}
-                      min={item.min ?? undefined}
-                      max={item.max ?? undefined}
-                      value={values[item.key] ?? ''}
-                      onChange={(e) =>
-                        setValues((prev) => ({ ...prev, [item.key]: e.target.value }))
-                      }
-                      aria-invalid={!!error}
-                      required
-                    />
-                    <FieldDescription>
-                      {item.description}
-                      {boundsHint(item)}
-                    </FieldDescription>
-                  </Field>
+              <div className="flex flex-col gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-9 w-full" />
                 ))}
-              </FieldGroup>
+              </div>
             </CardContent>
-            <CardFooter className="flex items-center justify-between">
-              <p className="text-sm text-destructive">{error}</p>
-              <Button type="submit" disabled={saving}>
-                {saving && <Spinner data-icon="inline-start" />}
-                Save changes
-              </Button>
-            </CardFooter>
-          </form>
-        )}
-      </Card>
-    </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-(--card-spacing)">
+              <CardContent>
+                <FieldGroup className="gap-4">
+                  {data?.items.map((item) => (
+                    <Field key={item.key} data-invalid={!!error}>
+                      <FieldLabel htmlFor={`setting-${item.key}`}>{item.label}</FieldLabel>
+                      <Input
+                        id={`setting-${item.key}`}
+                        type={item.type === 'string' ? 'text' : 'number'}
+                        step={item.type === 'float' ? 'any' : undefined}
+                        min={item.min ?? undefined}
+                        max={item.max ?? undefined}
+                        value={values[item.key] ?? ''}
+                        onChange={(e) =>
+                          setValues((prev) => ({ ...prev, [item.key]: e.target.value }))
+                        }
+                        aria-invalid={!!error}
+                        required
+                      />
+                      <FieldDescription>
+                        {item.description}
+                        {boundsHint(item)}
+                      </FieldDescription>
+                    </Field>
+                  ))}
+                </FieldGroup>
+              </CardContent>
+              <CardFooter className="flex items-center justify-between">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner data-icon="inline-start" />}
+                  Save changes
+                </Button>
+              </CardFooter>
+            </form>
+          )}
+        </Card>
+      </div>
+    </ScrollArea>
   )
 }

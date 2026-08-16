@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchLogs, type LogItem } from '@/api/logs'
 import { Badge } from '@/components/ui/badge'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -41,7 +42,7 @@ export default function LogsPage() {
   })
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Request Logs</h1>
@@ -69,9 +70,9 @@ export default function LogsPage() {
           </EmptyDescription>
         </Empty>
       ) : (
-        <div className="bg-card">
+        <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
           <Table>
-            <TableHeader>
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
               <TableRow>
                 <TableHead className="w-28">Time</TableHead>
                 <TableHead className="w-32">Client</TableHead>
@@ -109,7 +110,7 @@ export default function LogsPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </ScrollArea>
       )}
     </div>
   )
