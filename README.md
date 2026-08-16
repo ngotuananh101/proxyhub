@@ -43,6 +43,7 @@ ProxyHub is an open-source full-stack application for managing, health-checking,
 - [👤 Creating the First Account](#-creating-the-first-account)
 - [📖 Usage](#-usage)
 - [🧠 Proxy Rotation Logic](#-proxy-rotation-logic-gateway-plugin)
+- [🗄️ Migrating from SQLite to PostgreSQL](#️-migrating-from-sqlite-to-postgresql)
 - [🔒 Security Notes](#-security-notes)
 - [🩹 Troubleshooting](#-troubleshooting)
 - [🗺️ Roadmap](#️-roadmap)
@@ -58,9 +59,9 @@ Target features of the project:
 - **📥 Automatic proxy sources:** Imports proxies from free proxy list feeds (plain-text URLs) on a per-source schedule — configurable from the Dashboard.
 - **📊 Comprehensive dashboard:** A **`React`** UI for managing proxies, viewing statistics, and request logs in real time.
 - **🗂️ Pool/group management:** Group proxies by country, ISP, or custom tags.
-- **⚡ Lightweight database:** Uses **`SQLite`** (read/write via WAL mode), no complex DB server setup required.
+- **🐘 PostgreSQL database:** Concurrent-safe storage (no write locks between the API and workers); SQLite is still supported for single-process setups.
 - **🔒 Authentication & security:** JWT login, API token management for clients.
-- **🐳 One-command deployment:** Full **`Docker Compose`** setup orchestrating frontend, backend, worker, beat, gateway, and redis.
+- **🐳 One-command deployment:** Full **`Docker Compose`** setup orchestrating frontend, backend, worker, beat, gateway, postgres, and redis.
 
 ## 🏗️ System Architecture
 
@@ -71,7 +72,7 @@ flowchart LR
     G -->|Get alive proxy| B[FastAPI Backend<br/>:8000]
 
     R[React Dashboard<br/>:3000 / :5173] -->|Nginx Reverse Proxy / REST / WS| B
-    B -->|CRUD / Logs| D[(SQLite DB /data)]
+    B -->|CRUD / Logs| D[(PostgreSQL)]
 
     CB[Celery Beat] -->|Tick every 60s| CW[Celery Worker]
     CW -->|Test Proxy| P[Proxy Pool]
@@ -88,13 +89,14 @@ flowchart LR
 | Frontend Dashboard   | 3000      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS    |
 | FastAPI Backend      | Internal  | 8000                    | Proxied via Nginx at `/api`, `/docs`            |
 | proxy.py Gateway     | 8899      | 8899                    | Rotating proxy port for scrapers/clients        |
+| PostgreSQL           | Internal  | 5432                    | Primary database (persistent volume)            |
 | Redis                | Internal  | 6379                    | Broker/backend for Celery                       |
 
 ---
 
 ## 🐳 Quick Start with Docker Compose (Recommended)
 
-Docker Compose runs all 6 services (`frontend`, `backend`, `celery_worker`, `celery_beat`, `gateway`, `redis`) with persistent volumes in a single command.
+Docker Compose runs all 7 services (`frontend`, `backend`, `celery_worker`, `celery_beat`, `gateway`, `postgres`, `redis`) with persistent volumes in a single command.
 
 ### 1. Clone repository & create `.env`
 
@@ -145,6 +147,7 @@ If you prefer developing without Docker:
 ### Prerequisites
 - [**Python**](https://www.python.org/downloads/) >= 3.10
 - [**Node.js**](https://nodejs.org/) >= 18.x
+- [**PostgreSQL**](https://www.postgresql.org/download/) >= 14 running locally (create a database, e.g. `proxyhub`)
 - [**Redis**](https://redis.io/docs/getting-started/installation/) running at `localhost:6379`
 
 ### 1. Backend Setup
@@ -199,8 +202,11 @@ python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.
 The **`.env`** file contains configuration values:
 
 ```env
-# Database
-DATABASE_URL=sqlite:///./proxyhub.db
+# Database (PostgreSQL)
+# Local: postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/proxyhub
+# Docker Compose: postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub (auto-configured in docker-compose.yml)
+# SQLite still works for single-process setups: sqlite:///./proxyhub.db
+DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@127.0.0.1:5432/proxyhub
 
 # Redis (for Celery)
 REDIS_URL=redis://127.0.0.1:6379/0
@@ -305,9 +311,30 @@ The Dashboard updates live over a WebSocket (`/ws/events`, authenticated with yo
 The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`**. For each incoming request:
 
 1. The plugin calls the FastAPI internal API **`GET /internal/proxies?strategy=random`** (with the `X-Internal-Key` header).
-2. FastAPI queries SQLite to get an **`alive`** proxy and returns its URL.
+2. FastAPI queries the database for an **`alive`** proxy and returns its URL.
 3. The plugin establishes the upstream connection to that proxy.
 4. Traffic is forwarded along the path **client → upstream proxy → target**.
+
+---
+
+## 🗄️ Migrating from SQLite to PostgreSQL
+
+If you have an existing `proxyhub.db` from a previous SQLite setup, a one-shot script copies all data (users, settings, proxies, sources, request logs) into PostgreSQL:
+
+1. Stop the app so the SQLite file is not being written to.
+2. Point `DATABASE_URL` in `.env` at your PostgreSQL database.
+3. Run the migration:
+
+```bash
+# Local dev
+python -m scripts.migrate_sqlite_to_postgres ./proxyhub.db
+
+# Docker Compose (copy proxyhub.db next to docker-compose.yml first)
+docker compose run --rm -v $(pwd)/proxyhub.db:/tmp/proxyhub.db \
+  backend python -m scripts.migrate_sqlite_to_postgres /tmp/proxyhub.db
+```
+
+The script is idempotent — tables that already contain rows are skipped, so it is safe to re-run. The original `proxyhub.db` is only read, never modified; you can switch back at any time by setting `DATABASE_URL` to the SQLite path.
 
 ---
 
@@ -325,8 +352,9 @@ The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`*
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Celery worker crashes on Windows              | Celery does not support Windows with the default pool. Use Docker Compose (recommended) or `--pool=threads`.               |
 | `ConnectionError: redis://127.0.0.1:6379`     | Redis is not running. Start Redis (`redis-server`) or verify container `proxyhub-redis` is running.                         |
+| `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or `DATABASE_URL` is wrong. In Docker, verify container `proxyhub-postgres` is healthy.      |
 | Port 3000 or 8899 already in use              | Port conflict on host. Change `PORT` or `GATEWAY_PORT` in `.env`.                                                           |
-| `database is locked` (SQLite)                 | FastAPI and Celery writing concurrently. WAL mode and `busy_timeout` are enabled by default. In Docker, check volume permissions.|
+| `database is locked` (SQLite only)            | Only relevant if you kept SQLite. FastAPI and Celery write concurrently; WAL mode and `busy_timeout` are enabled by default. Switching to PostgreSQL removes this class of error. |
 | Gateway errors but Dashboard still shows proxies alive | Health check hasn't completed a cycle yet. Check worker logs (`docker compose logs -f celery_worker`) or click "Check now". |
 
 ---
@@ -338,6 +366,7 @@ The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`*
 - [x] Automatic Proxy Source Feeds & Dead Retention Purge
 - [x] WebSocket Realtime Logs & Stats
 - [x] Docker Compose: One-command deployment (`docker compose up -d`)
+- [x] PostgreSQL backend with SQLite → PostgreSQL migration script
 - [ ] Multi-tenant: Assign Users/API Keys to separate Pools
 - [ ] Sticky Session: Keep the same IP for a `session_id` for N minutes
 
