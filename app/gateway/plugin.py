@@ -25,7 +25,10 @@ API_TIMEOUT = 2.0
 
 
 def fetch_proxy_from_api(api_url: str, api_key: str) -> tuple[Optional[Url], Optional[str]]:
-    """Call the internal API to get one usable proxy and the default target URL. Returns (Url, target_url) or (None, None)."""
+    """Call the internal API to get one usable proxy and the default target URL.
+
+    Returns (Url, target_url) or (None, None).
+    """
     try:
         resp = httpx.get(
             api_url,
@@ -106,7 +109,8 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         if not self.upstream:
             return request
 
-        # If the client sent a direct request without a remote target host (e.g. browsing directly to gateway :8899),
+        # If the client sent a direct request without a remote target host
+        # (e.g. browsing directly to gateway :8899),
         # rewrite to default target from health check settings.
         if (
             self._default_target

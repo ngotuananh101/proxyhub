@@ -121,7 +121,13 @@ def test_update_me_username_conflict(client, engine, admin_user):
 
 def test_update_me_email_conflict(client, engine, admin_user):
     with Session(engine) as session:
-        session.add(User(username="other", hashed_password=hash_password("pass1234"), email="taken@example.com"))
+        session.add(
+            User(
+                username="other",
+                hashed_password=hash_password("pass1234"),
+                email="taken@example.com",
+            )
+        )
         session.commit()
     headers = _auth_headers(client)
     resp = client.put(
@@ -135,7 +141,9 @@ def test_update_me_email_conflict(client, engine, admin_user):
 
 def test_update_me_invalid_email(client, admin_user):
     headers = _auth_headers(client)
-    resp = client.put("/api/auth/me", json={"username": "admin", "email": "not-an-email"}, headers=headers)
+    resp = client.put(
+        "/api/auth/me", json={"username": "admin", "email": "not-an-email"}, headers=headers
+    )
     assert resp.status_code == 422
 
 

@@ -45,7 +45,9 @@ def update_me(
     if body.username != current_user.username:
         exists = session.exec(select(User).where(User.username == body.username)).first()
         if exists:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Username already taken"
+            )
     if body.email and body.email != current_user.email:
         exists = session.exec(select(User).where(User.email == body.email)).first()
         if exists:
@@ -71,7 +73,9 @@ def change_password(
     session: Session = Depends(get_session),
 ):
     if not verify_password(body.current_password, current_user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect"
+        )
     current_user.hashed_password = hash_password(body.new_password)
     session.add(current_user)
     session.commit()
