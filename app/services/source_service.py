@@ -148,12 +148,36 @@ def fetch_and_import(
 
 DEFAULT_SOURCES = [
     (
-        "monosans/proxy-list",
-        "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+        "monosans/proxy-list - http",
+        "https://cdn.jsdelivr.net/gh/monosans/proxy-list@main/proxies/http.txt",
     ),
     (
-        "TheSpeedX/PROXY-List",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+        "TheSpeedX/PROXY-List - http",
+        "https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/http.txt",
+    ),
+    (
+        "iplocate/free-proxy-list - http",
+        "https://cdn.jsdelivr.net/gh/iplocate/free-proxy-list@main/protocols/http.txt",
+    ),
+    (
+        "iplocate/free-proxy-list - https",
+        "https://cdn.jsdelivr.net/gh/iplocate/free-proxy-list@main/protocols/https.txt",
+    ),
+    (
+        "proxyscrape/free-proxy-list - http",
+        "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/http/data.txt",
+    ),
+    (
+        "proxyscrape/free-proxy-list - https",
+        "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/https/data.txt",
+    ),
+    (
+        "proxifly/free-proxy-list - http",
+        "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt",
+    ),
+    (
+        "proxifly/free-proxy-list - https",
+        "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/https/data.txt",
     ),
 ]
 
