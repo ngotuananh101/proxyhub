@@ -17,7 +17,9 @@ class TestFetchProxyFromApi:
         }
         mock_get.return_value = mock_resp
 
-        result, default_target = fetch_proxy_from_api("http://localhost:8000/internal/proxies", "key")
+        result, default_target = fetch_proxy_from_api(
+            "http://localhost:8000/internal/proxies", "key"
+        )
         assert result is not None
         assert result.hostname == b"1.2.3.4"
         assert result.port == 8080
@@ -29,14 +31,18 @@ class TestFetchProxyFromApi:
         mock_resp.status_code = 404
         mock_get.return_value = mock_resp
 
-        result, default_target = fetch_proxy_from_api("http://localhost:8000/internal/proxies", "key")
+        result, default_target = fetch_proxy_from_api(
+            "http://localhost:8000/internal/proxies", "key"
+        )
         assert result is None
         assert default_target is None
 
     @patch("app.gateway.plugin.httpx.get")
     def test_backend_down(self, mock_get):
         mock_get.side_effect = Exception("Connection refused")
-        result, default_target = fetch_proxy_from_api("http://localhost:8000/internal/proxies", "key")
+        result, default_target = fetch_proxy_from_api(
+            "http://localhost:8000/internal/proxies", "key"
+        )
         assert result is None
         assert default_target is None
 
@@ -49,6 +55,8 @@ class TestAccessLogPayload:
         plugin.upstream.addr = ("34.43.46.91", 80)
         plugin.total_size = 512
         plugin._endpoint = None
+        plugin._default_target = None
+        plugin._metadata = [None, None, None, None]
         return plugin
 
     def test_payload_is_json_serializable(self):
