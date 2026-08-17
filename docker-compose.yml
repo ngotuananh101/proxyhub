@@ -23,12 +23,15 @@ services:
       - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
       - POSTGRES_DB=${POSTGRES_DB:-proxyhub}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # postgres:18+ expects the mount at /var/lib/postgresql and stores
+      # data in a version-specific subdirectory (enables pg_upgrade).
+      - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U proxyhub -d proxyhub"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-proxyhub} -d $${POSTGRES_DB:-proxyhub}"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 15s
     networks:
       - proxyhub-network
 
