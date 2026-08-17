@@ -19,9 +19,9 @@ services:
     container_name: proxyhub-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=proxyhub
-      - POSTGRES_PASSWORD=proxyhub
-      - POSTGRES_DB=proxyhub
+      - POSTGRES_USER=${POSTGRES_USER:-proxyhub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?required: set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-proxyhub}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,9 +42,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     depends_on:
       redis:
         condition: service_healthy
@@ -63,9 +63,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     depends_on:
       redis:
         condition: service_healthy
@@ -84,9 +84,9 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     depends_on:
       redis:
         condition: service_healthy

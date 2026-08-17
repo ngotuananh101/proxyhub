@@ -23,3 +23,26 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Placeholder values that must never reach a running deployment.
+INSECURE_PLACEHOLDERS = {"", "change_me"}
+
+
+def validate_secrets(s: Settings) -> None:
+    """Fail fast if auth secrets are still placeholder values.
+
+    Called at server/worker startup so a deployment that forgot to set
+    SECRET_KEY or INTERNAL_API_KEY cannot silently run with values
+    anyone can guess.
+    """
+    unset = [
+        name
+        for name in ("SECRET_KEY", "INTERNAL_API_KEY")
+        if getattr(s, name) in INSECURE_PLACEHOLDERS
+    ]
+    if unset:
+        raise RuntimeError(
+            "Refusing to start with insecure default secrets: "
+            + ", ".join(unset)
+            + ". Set real values in .env (see .env.example)."
+        )

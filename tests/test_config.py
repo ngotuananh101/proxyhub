@@ -1,5 +1,7 @@
 # tests/test_config.py
-from app.core.config import Settings
+import pytest
+
+from app.core.config import Settings, validate_secrets
 
 
 def test_settings_defaults():
@@ -58,4 +60,35 @@ def test_celery_and_health_check_defaults(monkeypatch):
     assert s.HEALTH_CHECK_TIMEOUT == 6.0
     assert s.HEALTH_CHECK_INTERVAL == 300.0
     assert s.HEALTH_CHECK_CONCURRENCY == 50
+
+
+def test_validate_secrets_accepts_real_values():
+    s = Settings(
+        _env_file=None,
+        SECRET_KEY="a-real-random-secret",
+        INTERNAL_API_KEY="a-real-internal-key",
+    )
+    validate_secrets(s)  # must not raise
+
+
+@pytest.mark.parametrize("bad", ["change_me", ""])
+def test_validate_secrets_rejects_placeholders(bad):
+    s = Settings(
+        _env_file=None,
+        SECRET_KEY=bad,
+        INTERNAL_API_KEY=bad,
+    )
+    with pytest.raises(RuntimeError, match="SECRET_KEY, INTERNAL_API_KEY"):
+        validate_secrets(s)
+
+
+def test_validate_secrets_names_only_unset_keys():
+    s = Settings(
+        _env_file=None,
+        SECRET_KEY="a-real-random-secret",
+        INTERNAL_API_KEY="change_me",
+    )
+    with pytest.raises(RuntimeError, match="INTERNAL_API_KEY") as exc_info:
+        validate_secrets(s)
+    assert "SECRET_KEY" not in str(exc_info.value)
 

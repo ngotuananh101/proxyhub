@@ -9,7 +9,7 @@ from redis.exceptions import LockError
 from sqlmodel import Session, col, select
 
 from app.core import database
-from app.core.config import settings
+from app.core.config import settings, validate_secrets
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
 from app.models.source import ProxySource
@@ -19,6 +19,9 @@ from app.services.settings_service import get_all as get_settings
 from app.services.source_service import fetch_and_import, is_due, seed_default_sources
 
 logger = logging.getLogger(__name__)
+
+# Celery workers/beat never run the FastAPI lifespan, so validate here too.
+validate_secrets(settings)
 
 celery_app = Celery(
     "proxyhub",

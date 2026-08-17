@@ -12,7 +12,7 @@ from app.api.proxies import router as proxies_router
 from app.api.settings import router as settings_router
 from app.api.sources import router as sources_router
 from app.api.stats import router as stats_router
-from app.core.config import settings
+from app.core.config import settings, validate_secrets
 from app.core.database import create_db_and_tables, engine
 from app.services.events import start_relay, stop_relay
 from app.services.settings_service import seed_settings
@@ -22,6 +22,7 @@ from app.services.source_service import seed_default_sources
 def create_app(db_engine=None):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        validate_secrets(settings)
         if db_engine is None:
             create_db_and_tables()
         with Session(db_engine or engine) as session:
