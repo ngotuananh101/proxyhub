@@ -12,7 +12,21 @@ export interface LogItem {
   created_at: string
 }
 
-export async function fetchLogs(limit = 100): Promise<LogItem[]> {
-  const res = await client.get('/api/logs', { params: { limit } })
+export interface LogListResponse {
+  items: LogItem[]
+  total: number
+  page: number
+  size: number
+}
+
+export async function fetchLogs(params?: {
+  page?: number
+  size?: number
+  method?: string
+  q?: string
+  start?: string
+  end?: string
+}): Promise<LogListResponse> {
+  const res = await client.get('/api/logs', { params })
   return res.data
 }

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     HEALTH_CHECK_TIMEOUT: float = 6.0
     HEALTH_CHECK_INTERVAL: float = 300.0
     HEALTH_CHECK_CONCURRENCY: int = 50
+    REQUEST_LOG_RETENTION_DAYS: int = 30
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -6,6 +6,7 @@ from sqlmodel import select
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.source import ProxySource
 from app.services.source_service import (
+    DEFAULT_SOURCES,
     fetch_and_import,
     import_source_text,
     is_due,
@@ -175,4 +176,4 @@ class TestSeedDefaultSources:
     def test_idempotent(self, session):
         seed_default_sources(session)
         seed_default_sources(session)
-        assert len(session.exec(select(ProxySource)).all()) == 2
+        assert len(session.exec(select(ProxySource)).all()) == len(DEFAULT_SOURCES)

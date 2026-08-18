@@ -83,6 +83,18 @@ REGISTRY: dict[str, SettingDef] = {
             max=365,
         ),
         SettingDef(
+            key="REQUEST_LOG_RETENTION_DAYS",
+            label="Request log retention (days)",
+            description=(
+                "Request logs older than this are removed automatically. "
+                "0 disables removal."
+            ),
+            type="int",
+            default=settings.REQUEST_LOG_RETENTION_DAYS,
+            min=0,
+            max=3650,
+        ),
+        SettingDef(
             key="TIMEZONE",
             label="Timezone",
             description=(

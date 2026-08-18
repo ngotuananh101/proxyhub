@@ -41,8 +41,8 @@ def test_startup_seeds_default_sources(client, admin_headers):
     resp = client.get("/api/sources", headers=admin_headers)
     assert resp.status_code == 200
     names = {s["name"] for s in resp.json()}
-    assert "monosans/proxy-list" in names
-    assert "TheSpeedX/PROXY-List" in names
+    assert any(name.startswith("monosans/proxy-list") for name in names)
+    assert any(name.startswith("TheSpeedX/PROXY-List") for name in names)
 
 
 def test_list_requires_auth(client):

@@ -69,7 +69,7 @@ class TestApiEmitsUtcOffsets:
 
         resp = client.get("/api/logs", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()[0]["created_at"].endswith("+00:00")
+        assert resp.json()["items"][0]["created_at"].endswith("+00:00")
 
     def test_sources_created_at_has_utc_offset(self, client, auth_headers):
         created = client.post(

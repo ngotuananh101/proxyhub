@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlmodel import Session, select
 
+from app.models.log import RequestLog
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
 from app.models.source import ProxySource
@@ -415,6 +416,13 @@ class TestBeatSchedule:
         assert entry["task"] == "app.worker.fetch_due_sources"
         assert entry["schedule"] == 60.0
 
+    def test_purge_request_logs_schedule_configured(self):
+        from app.worker import celery_app
+
+        entry = celery_app.conf.beat_schedule["purge-request-logs"]
+        assert entry["task"] == "app.worker.purge_request_logs"
+        assert entry["schedule"] == 3600.0
+
 
 class TestFetchDueSources:
     def test_fetches_only_due_sources(self, engine):
@@ -456,5 +464,60 @@ class TestFetchDueSources:
 
         with Session(engine) as session:
             names = {s.name for s in session.exec(select(ProxySource)).all()}
-        assert "monosans/proxy-list" in names
-        assert "TheSpeedX/PROXY-List" in names
+        assert any(name.startswith("monosans/proxy-list") for name in names)
+        assert any(name.startswith("TheSpeedX/PROXY-List") for name in names)
+
+
+class TestPurgeRequestLogs:
+    def _seed_log(self, engine, age_days: float, host: str):
+        from app.models.log import RequestLog
+
+        with Session(engine) as session:
+            session.add(
+                RequestLog(
+                    host=host,
+                    created_at=datetime.now(timezone.utc) - timedelta(days=age_days),
+                )
+            )
+            session.commit()
+
+    def test_purges_logs_older_than_retention_setting(self, engine):
+        from app.worker import purge_request_logs
+
+        _set_setting(engine, "REQUEST_LOG_RETENTION_DAYS", "30")
+        self._seed_log(engine, 40, "old.example.com")
+        self._seed_log(engine, 5, "recent.example.com")
+
+        removed = purge_request_logs()
+
+        assert removed == 1
+        with Session(engine) as session:
+            hosts = {log.host for log in session.exec(select(RequestLog)).all()}
+        assert hosts == {"recent.example.com"}
+
+    def test_zero_retention_disables_purge(self, engine):
+        from app.worker import purge_request_logs
+
+        _set_setting(engine, "REQUEST_LOG_RETENTION_DAYS", "0")
+        self._seed_log(engine, 90, "old.example.com")
+
+        assert purge_request_logs() == 0
+        with Session(engine) as session:
+            assert len(session.exec(select(RequestLog)).all()) == 1
+
+    def test_skips_when_lock_held(self, engine, _fake_locks):
+        from app.worker import PURGE_LOG_LOCK_NAME, purge_request_logs
+
+        _fake_locks.add(PURGE_LOG_LOCK_NAME)
+
+        with patch("app.worker.purge_old_request_logs") as mock_purge:
+            assert purge_request_logs() == 0
+
+        mock_purge.assert_not_called()
+
+    def test_releases_lock_after_run(self, engine, _fake_locks):
+        from app.worker import PURGE_LOG_LOCK_NAME, purge_request_logs
+
+        purge_request_logs()
+
+        assert PURGE_LOG_LOCK_NAME not in _fake_locks

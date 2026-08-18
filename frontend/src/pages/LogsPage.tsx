@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
 import { fetchLogs, type LogItem } from '@/api/logs'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -17,7 +28,22 @@ import { useRealtime } from '@/hooks/useRealtime'
 import { useTimezone } from '@/hooks/use-timezone'
 import { formatTime } from '@/lib/datetime'
 
-const MAX_ROWS = 200
+const methodItems = [
+  { label: 'All', value: 'all' },
+  { label: 'GET', value: 'GET' },
+  { label: 'POST', value: 'POST' },
+  { label: 'PUT', value: 'PUT' },
+  { label: 'DELETE', value: 'DELETE' },
+  { label: 'HEAD', value: 'HEAD' },
+  { label: 'CONNECT', value: 'CONNECT' },
+]
+
+const pageSizeItems = [
+  { label: '10', value: '10' },
+  { label: '20', value: '20' },
+  { label: '50', value: '50' },
+  { label: '100', value: '100' },
+]
 
 function formatBytes(n: number | null): string {
   if (n === null) return '—'
@@ -28,21 +54,64 @@ function formatBytes(n: number | null): string {
 
 export default function LogsPage() {
   const timezone = useTimezone()
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [method, setMethod] = useState('all')
+  const [search, setSearch] = useState('')
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  // Live logs are only prepended in-place on the latest, unfiltered view.
+  // Filtered or older pages simply refetch when new logs arrive.
+  const liveRef = useRef(true)
+  liveRef.current = page === 1 && method === 'all' && !search && !start && !end
+
   const { data, isPending } = useQuery({
-    queryKey: ['logs'],
-    queryFn: () => fetchLogs(MAX_ROWS),
+    queryKey: ['logs', { page, pageSize, method, search, start, end }],
+    queryFn: () =>
+      fetchLogs({
+        page,
+        size: pageSize,
+        method: method === 'all' ? undefined : method,
+        q: search || undefined,
+        start: start || undefined,
+        end: end || undefined,
+      }),
   })
   const [rows, setRows] = useState<LogItem[]>([])
 
   useEffect(() => {
-    if (data) setRows(data)
+    if (data) setRows(data.items)
   }, [data])
+
+  // Buffer log events arriving in the same tick and prepend them in one flush,
+  // so a burst of requests causes one render instead of one per event.
+  const bufferRef = useRef<LogItem[]>([])
+  const flushScheduledRef = useRef(false)
 
   useRealtime((event) => {
     if (event.topic !== 'logs') return
+    if (!liveRef.current) {
+      queryClient.invalidateQueries({ queryKey: ['logs'] })
+      return
+    }
     const log = event.data as unknown as LogItem
-    setRows((prev) => [log, ...prev.filter((r) => r.id !== log.id)].slice(0, MAX_ROWS))
+    bufferRef.current.push(log)
+    if (flushScheduledRef.current) return
+    flushScheduledRef.current = true
+    setTimeout(() => {
+      flushScheduledRef.current = false
+      const incoming = bufferRef.current
+      bufferRef.current = []
+      if (incoming.length === 0) return
+      setRows((prev) => {
+        const ids = new Set(incoming.map((l) => l.id))
+        return [...incoming, ...prev.filter((l) => !ids.has(l.id))].slice(0, 200)
+      })
+    })
   })
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.size)) : 1
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
@@ -59,7 +128,63 @@ export default function LogsPage() {
         </span>
       </div>
 
-      {isPending ? (
+      <div className="flex shrink-0 flex-wrap gap-3">
+        <div className="relative w-64">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search host, path, proxy or IP..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
+            className="pl-8"
+          />
+        </div>
+        <Select
+          items={methodItems}
+          value={method}
+          onValueChange={(value) => {
+            setMethod(value ?? 'all')
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {methodItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Input
+          aria-label="From"
+          type="datetime-local"
+          value={start}
+          onChange={(e) => {
+            setStart(e.target.value)
+            setPage(1)
+          }}
+          className="w-52"
+        />
+        <Input
+          aria-label="To"
+          type="datetime-local"
+          value={end}
+          onChange={(e) => {
+            setEnd(e.target.value)
+            setPage(1)
+          }}
+          className="w-52"
+        />
+      </div>
+
+      {isPending || !data ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
@@ -67,53 +192,107 @@ export default function LogsPage() {
         </div>
       ) : rows.length === 0 ? (
         <Empty>
-          <EmptyTitle>No requests yet</EmptyTitle>
+          <EmptyTitle>No requests found</EmptyTitle>
           <EmptyDescription>
-            Route traffic through the gateway to see live request logs.
+            Route traffic through the gateway to see request logs.
           </EmptyDescription>
         </Empty>
       ) : (
-        <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
-          <Table>
-            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
-              <TableRow>
-                <TableHead className="w-28">Time</TableHead>
-                <TableHead className="w-32">Client</TableHead>
-                <TableHead className="w-20">Method</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead className="w-44">Proxy</TableHead>
-                <TableHead className="w-24 text-right">Size</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                    {formatTime(log.created_at, timezone)}
-                  </TableCell>
-                  <TableCell className="text-xs">{log.client_ip ?? '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{log.method ?? '—'}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-96">
-                    <span className="block truncate text-sm">
-                      {log.host ?? '—'}
-                      {log.path && (
-                        <span className="text-muted-foreground">{log.path}</span>
-                      )}
-                    </span>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {log.proxy_host ? `${log.proxy_host}:${log.proxy_port}` : '—'}
-                  </TableCell>
-                  <TableCell className="text-right text-xs tabular-nums">
-                    {formatBytes(log.response_bytes)}
-                  </TableCell>
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
+            <Table>
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
+                <TableRow>
+                  <TableHead className="w-28">Time</TableHead>
+                  <TableHead className="w-32">Client</TableHead>
+                  <TableHead className="w-20">Method</TableHead>
+                  <TableHead>Target</TableHead>
+                  <TableHead className="w-44">Proxy</TableHead>
+                  <TableHead className="w-24 text-right">Size</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </ScrollArea>
+              </TableHeader>
+              <TableBody>
+                {rows.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                      {formatTime(log.created_at, timezone)}
+                    </TableCell>
+                    <TableCell className="text-xs">{log.client_ip ?? '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{log.method ?? '—'}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-96">
+                      <span className="block truncate text-sm">
+                        {log.host ?? '—'}
+                        {log.path && (
+                          <span className="text-muted-foreground">{log.path}</span>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {log.proxy_host ? `${log.proxy_host}:${log.proxy_port}` : '—'}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {formatBytes(log.response_bytes)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span>
+              Page {data.page}/{totalPages} — {data.total} records total
+            </span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span>Rows per page</span>
+                <Select
+                  items={pageSizeItems}
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value ?? '20'))
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {pageSizeItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeftIcon data-icon="inline-start" />
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page * data.size >= data.total}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                  <ChevronRightIcon data-icon="inline-end" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

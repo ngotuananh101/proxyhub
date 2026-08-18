@@ -11,3 +11,10 @@ class RequestLogResponse(BaseModel):
     proxy_port: int | None = None
     response_bytes: int | None = None
     created_at: str
+
+
+class RequestLogListResponse(BaseModel):
+    items: list[RequestLogResponse]
+    total: int
+    page: int
+    size: int

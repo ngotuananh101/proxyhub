@@ -15,6 +15,7 @@ from app.models.setting import AppSetting
 from app.models.source import ProxySource
 from app.services import health_service
 from app.services.events import broadcast_sync
+from app.services.log_service import purge_old_request_logs
 from app.services.settings_service import get_all as get_settings
 from app.services.source_service import fetch_and_import, is_due, seed_default_sources
 
@@ -41,6 +42,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.worker.fetch_due_sources",
         "schedule": 60.0,
     },
+    "purge-request-logs": {
+        "task": "app.worker.purge_request_logs",
+        "schedule": 3600.0,
+    },
 }
 
 CHECKABLE_SCHEMES = ("http", "https")
@@ -62,6 +67,7 @@ def _get_engine():
 # dies mid-run.
 CHECK_LOCK_NAME = "proxyhub:check_all_proxies"
 FETCH_LOCK_NAME = "proxyhub:fetch_due_sources"
+PURGE_LOG_LOCK_NAME = "proxyhub:purge_request_logs"
 LOCK_TIMEOUT = 900.0
 
 
@@ -265,5 +271,28 @@ def fetch_due_sources() -> int:
         if fetched:
             logger.info("Fetched %d proxy sources", fetched)
         return fetched
+    finally:
+        _release_lock(lock)
+
+
+@celery_app.task(name="purge-request-logs")
+def purge_request_logs() -> int:
+    """Delete request logs older than the configured retention period.
+
+    Beat fires hourly; the retention is read from the DB setting so changes
+    made from the dashboard take effect without restarting beat.
+    """
+    lock = _acquire_lock(PURGE_LOG_LOCK_NAME)
+    if lock is None:
+        logger.info("A request-log purge is already running; skipping")
+        return 0
+    try:
+        with Session(_get_engine()) as session:
+            values = get_settings(session)
+            retention_days = int(values["REQUEST_LOG_RETENTION_DAYS"])
+            removed = purge_old_request_logs(session, retention_days)
+        if removed:
+            logger.info("Purged %d old request logs", removed)
+        return removed
     finally:
         _release_lock(lock)
