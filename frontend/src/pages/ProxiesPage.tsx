@@ -15,9 +15,11 @@ import {
   deleteProxy,
   fetchProxies,
   triggerCheckAll,
+  type ProxyItem,
   type StatsSummary,
 } from '@/api/proxies'
 import { AddProxyDialog } from '@/components/proxies/AddProxyDialog'
+import { EditProxyDialog } from '@/components/proxies/EditProxyDialog'
 import { ImportDialog } from '@/components/proxies/ImportDialog'
 import { ProxyTable } from '@/components/proxies/ProxyTable'
 import { StatCards } from '@/components/proxies/StatCards'
@@ -63,6 +65,7 @@ export default function ProxiesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showImport, setShowImport] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editingProxy, setEditingProxy] = useState<ProxyItem | null>(null)
   const [checking, setChecking] = useState(false)
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
@@ -259,6 +262,7 @@ export default function ProxiesPage() {
             selected={selected}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
+            onEdit={setEditingProxy}
             onDelete={handleDelete}
           />
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
@@ -325,6 +329,11 @@ export default function ProxiesPage() {
         open={showForm}
         onOpenChange={setShowForm}
         onCreated={invalidate}
+      />
+      <EditProxyDialog
+        proxy={editingProxy}
+        onOpenChange={() => setEditingProxy(null)}
+        onUpdated={invalidate}
       />
     </div>
   )

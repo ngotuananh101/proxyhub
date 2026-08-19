@@ -1,4 +1,4 @@
-import { Trash2Icon } from 'lucide-react'
+import { PencilIcon, Trash2Icon } from 'lucide-react'
 import type { ProxyItem } from '@/api/proxies'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ interface Props {
   selected: Set<number>
   onToggleSelect: (id: number) => void
   onToggleSelectAll: () => void
+  onEdit: (proxy: ProxyItem) => void
   onDelete: (id: number) => void
 }
 
@@ -32,6 +33,7 @@ export function ProxyTable({
   selected,
   onToggleSelect,
   onToggleSelectAll,
+  onEdit,
   onDelete,
 }: Props) {
   const allSelected = proxies.length > 0 && selected.size === proxies.length
@@ -96,14 +98,24 @@ export function ProxyTable({
                 {proxy.latency_ms != null ? `${proxy.latency_ms} ms` : '—'}
               </TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => onDelete(proxy.id)}
-                  aria-label={`Delete ${proxy.host}:${proxy.port}`}
-                >
-                  <Trash2Icon />
-                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onEdit(proxy)}
+                    aria-label={`Edit ${proxy.host}:${proxy.port}`}
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onDelete(proxy.id)}
+                    aria-label={`Delete ${proxy.host}:${proxy.port}`}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
