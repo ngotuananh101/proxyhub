@@ -258,3 +258,35 @@ def test_update_proxy_not_found(client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+def test_update_proxy_port_out_of_range(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"port": 70000},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_update_proxy_port_valid(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"port": 9090},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["port"] == 9090
+

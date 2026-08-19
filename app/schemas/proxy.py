@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProxyCreate(BaseModel):
     scheme: str
     host: str
-    port: int
+    port: int = Field(ge=1, le=65535)
     username: str | None = None
     password: str | None = None
 
@@ -12,7 +12,7 @@ class ProxyCreate(BaseModel):
 class ProxyUpdate(BaseModel):
     scheme: str | None = None
     host: str | None = None
-    port: int | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
     username: str | None = None
     password: str | None = None
     status: str | None = None
