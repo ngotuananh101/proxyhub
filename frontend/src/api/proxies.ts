@@ -81,3 +81,18 @@ export async function clearDeadProxies(): Promise<{ deleted: number }> {
   return res.data
 }
 
+export async function updateProxy(
+  id: number,
+  data: {
+    scheme?: string
+    host?: string
+    port?: number
+    username?: string | null
+    password?: string | null
+    status?: string
+  },
+): Promise<ProxyItem> {
+  const res = await client.put(`/api/proxies/${id}`, data)
+  return res.data
+}
+
