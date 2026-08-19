@@ -26,6 +26,7 @@ describe('ProxyTable', () => {
         selected={new Set()}
         onToggleSelect={() => {}}
         onToggleSelectAll={() => {}}
+        onEdit={() => {}}
         onDelete={() => {}}
       />
     )
