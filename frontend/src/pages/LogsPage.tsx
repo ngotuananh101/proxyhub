@@ -153,7 +153,7 @@ export default function LogsPage() {
         </span>
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         <div className="relative w-64">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -193,7 +193,7 @@ export default function LogsPage() {
               <Button
                 variant="outline"
                 aria-label="Date range"
-                className="w-56 justify-start px-2.5 font-normal"
+                className="w-64 justify-start px-2.5 font-normal"
               />
             }
           >
@@ -223,10 +223,10 @@ export default function LogsPage() {
             />
           </PopoverContent>
         </Popover>
-        {start && (
+        {date?.from && (
           <Button
             variant="ghost"
-            size="sm"
+            className="text-xs font-bold uppercase tracking-wider"
             aria-label="Clear date filter"
             onClick={() => {
               setDate(undefined)
