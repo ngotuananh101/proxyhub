@@ -1,11 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
+import { format } from 'date-fns'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
+import { type DateRange } from 'react-day-picker'
 import { fetchLogs, type LogItem } from '@/api/logs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
@@ -59,8 +67,25 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(20)
   const [method, setMethod] = useState('all')
   const [search, setSearch] = useState('')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const [date, setDate] = useState<DateRange | undefined>(undefined)
+
+  // Convert the selected day range into UTC ISO instants accepted by the API.
+  // A day boundary is inclusive at the start and exclusive at the end, so the
+  // range covers the full end day.
+  const range = useMemo(() => {
+    if (!date?.from) return { start: '', end: '' }
+    const from = new Date(date.from)
+    from.setHours(0, 0, 0, 0)
+    const to = date.to ? new Date(date.to) : new Date(date.from)
+    to.setDate(to.getDate() + 1)
+    to.setHours(0, 0, 0, 0)
+    return {
+      start: from.toISOString(),
+      end: to.toISOString(),
+    }
+  }, [date])
+  const { start, end } = range
+
   // Live logs are only prepended in-place on the latest, unfiltered view.
   // Filtered or older pages simply refetch when new logs arrive.
   const liveRef = useRef(true)
@@ -162,26 +187,55 @@ export default function LogsPage() {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Input
-          aria-label="From"
-          type="datetime-local"
-          value={start}
-          onChange={(e) => {
-            setStart(e.target.value)
-            setPage(1)
-          }}
-          className="w-52"
-        />
-        <Input
-          aria-label="To"
-          type="datetime-local"
-          value={end}
-          onChange={(e) => {
-            setEnd(e.target.value)
-            setPage(1)
-          }}
-          className="w-52"
-        />
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                aria-label="Date range"
+                className="w-56 justify-start px-2.5 font-normal"
+              />
+            }
+          >
+            <CalendarIcon data-icon="inline-start" />
+            {date?.from ? (
+              date.to ? (
+                <>
+                  {format(date.from, 'LLL dd, y')} - {format(date.to, 'LLL dd, y')}
+                </>
+              ) : (
+                format(date.from, 'LLL dd, y')
+              )
+            ) : (
+              <span className="text-muted-foreground">Pick a range</span>
+            )}
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="range"
+              defaultMonth={date?.from}
+              selected={date}
+              onSelect={(value) => {
+                setDate(value ?? undefined)
+                setPage(1)
+              }}
+              numberOfMonths={2}
+            />
+          </PopoverContent>
+        </Popover>
+        {start && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Clear date filter"
+            onClick={() => {
+              setDate(undefined)
+              setPage(1)
+            }}
+          >
+            Clear
+          </Button>
+        )}
       </div>
 
       {isPending || !data ? (
