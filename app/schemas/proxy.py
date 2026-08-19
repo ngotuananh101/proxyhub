@@ -10,10 +10,12 @@ class ProxyCreate(BaseModel):
 
 
 class ProxyUpdate(BaseModel):
+    scheme: str | None = None
     host: str | None = None
     port: int | None = None
     username: str | None = None
     password: str | None = None
+    status: str | None = None
 
 
 class ProxyResponse(BaseModel):

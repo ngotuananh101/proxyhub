@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, col, func, select
 
@@ -138,9 +140,42 @@ def update_proxy(
     proxy = session.get(Proxy, proxy_id)
     if not proxy:
         raise HTTPException(status_code=404, detail="Proxy not found")
+
     update_data = body.model_dump(exclude_unset=True)
+
+    # Validate scheme
+    if "scheme" in update_data and update_data["scheme"] not in ("http", "https"):
+        raise HTTPException(status_code=422, detail="Scheme must be http or https")
+
+    # Validate status → convert to enum
+    if "status" in update_data:
+        try:
+            update_data["status"] = ProxyStatus(update_data["status"])
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="Status must be alive, dead, or unknown",
+            )
+
+    # Check unique constraint when scheme/host/port changes
+    new_scheme = update_data.get("scheme", proxy.scheme)
+    new_host = update_data.get("host", proxy.host)
+    new_port = update_data.get("port", proxy.port)
+    if (new_scheme, new_host, new_port) != (proxy.scheme, proxy.host, proxy.port):
+        conflict = session.exec(
+            select(Proxy).where(
+                Proxy.scheme == new_scheme,
+                Proxy.host == new_host,
+                Proxy.port == new_port,
+                Proxy.id != proxy_id,
+            )
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Proxy already exists")
+
     for key, value in update_data.items():
         setattr(proxy, key, value)
+    proxy.updated_at = datetime.now(timezone.utc)
     session.add(proxy)
     session.commit()
     session.refresh(proxy)

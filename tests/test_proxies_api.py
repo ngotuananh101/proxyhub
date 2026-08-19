@@ -135,3 +135,126 @@ def test_clear_dead_deletes_only_dead(client, auth_headers, engine):
 def test_clear_dead_requires_auth(client):
     resp = client.post("/api/proxies/clear-dead")
     assert resp.status_code == 401
+
+
+def test_update_proxy_host(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"host": "5.6.7.8"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["host"] == "5.6.7.8"
+    assert resp.json()["port"] == 8080  # unchanged
+
+
+def test_update_proxy_scheme(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"scheme": "https"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["scheme"] == "https"
+
+
+def test_update_proxy_status(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"status": "alive"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "alive"
+
+
+def test_update_proxy_invalid_scheme(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"scheme": "socks5"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_update_proxy_invalid_status(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"status": "bananas"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_update_proxy_duplicate_conflict(client, auth_headers):
+    client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.1.1.1", "port": 80},
+        headers=auth_headers,
+    )
+    create2 = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "2.2.2.2", "port": 80},
+        headers=auth_headers,
+    )
+    proxy2_id = create2.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy2_id}",
+        json={"host": "1.1.1.1"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+
+
+def test_update_proxy_same_values_no_conflict(client, auth_headers):
+    create = client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
+        headers=auth_headers,
+    )
+    proxy_id = create.json()["id"]
+    resp = client.put(
+        f"/api/proxies/{proxy_id}",
+        json={"host": "1.2.3.4"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
+def test_update_proxy_not_found(client, auth_headers):
+    resp = client.put(
+        "/api/proxies/99999",
+        json={"host": "1.1.1.1"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404
