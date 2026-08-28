@@ -10,7 +10,13 @@ os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key")
 
 # Import models so SQLModel.metadata knows about them before create_all
 try:
-    from app.models import AppSetting, Proxy, ProxyStatus, User  # noqa: F401, E402
+    from app.models import (  # noqa: F401, E402
+        AppSetting,
+        Proxy,
+        ProxyStatus,
+        Tenant,
+        User,
+    )
 except ImportError:
     pass
 
