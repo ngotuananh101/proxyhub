@@ -20,8 +20,25 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
+def create_db_and_tables(target_engine=None):
+    db_engine = target_engine or engine
+    SQLModel.metadata.create_all(db_engine)
+
+    # Ensure tenant_id column exists on existing tables if migrated from pre-tenant schema
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db_engine)
+    tables_to_patch = ["proxies", "proxysources", "requestlogs"]
+    for table_name in tables_to_patch:
+        if inspector.has_table(table_name):
+            cols = {c["name"] for c in inspector.get_columns(table_name)}
+            if "tenant_id" not in cols:
+                with db_engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE {table_name} ADD COLUMN tenant_id INTEGER"
+                        )
+                    )
 
 
 def get_session():

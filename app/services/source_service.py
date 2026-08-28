@@ -190,5 +190,13 @@ def seed_default_sources(session: Session, tenant_id: int | None = None) -> None
             select(ProxySource).where(ProxySource.url == url, ProxySource.tenant_id == tenant_id)
         ).first()
         if existing is None:
-            session.add(ProxySource(name=name, url=url, tenant_id=tenant_id))
+            # Check if there is an unassigned legacy row with the same url
+            unassigned = session.exec(
+                select(ProxySource).where(ProxySource.url == url, ProxySource.tenant_id.is_(None))
+            ).first()
+            if unassigned is not None:
+                unassigned.tenant_id = tenant_id
+                session.add(unassigned)
+            else:
+                session.add(ProxySource(name=name, url=url, tenant_id=tenant_id))
     session.commit()
