@@ -35,7 +35,8 @@ import {
 import { useRealtime } from '@/hooks/useRealtime'
 import { useTenant } from '@/lib/tenant'
 import { useTimezone } from '@/hooks/use-timezone'
-import { formatTime } from '@/lib/datetime'
+import { formatDateTime } from '@/lib/datetime'
+
 
 const methodItems = [
   { label: 'All', value: 'all' },
@@ -266,7 +267,7 @@ export default function LogsPage() {
             <Table>
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
                 <TableRow>
-                  <TableHead className="w-28">Time</TableHead>
+                  <TableHead className="w-48">Time</TableHead>
                   <TableHead className="w-32">Client</TableHead>
                   <TableHead className="w-20">Method</TableHead>
                   <TableHead>Target</TableHead>
@@ -278,8 +279,9 @@ export default function LogsPage() {
                 {rows.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                      {formatTime(log.created_at, timezone)}
+                      {formatDateTime(log.created_at, timezone)}
                     </TableCell>
+
                     <TableCell className="text-xs">{log.client_ip ?? '—'}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{log.method ?? '—'}</Badge>
