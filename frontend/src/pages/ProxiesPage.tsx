@@ -71,11 +71,10 @@ export default function ProxiesPage() {
   const queryClient = useQueryClient()
 
   // Refresh stats and the table live as health check results stream in.
-  // The stats payload is complete, so write it straight into the query
-  // cache; only the paginated table needs a refetch.
+  // Invalidating both queries ensures the active tenant's scoped stats and proxies are refetched.
   useRealtime((event) => {
     if (event.topic === 'stats') {
-      queryClient.setQueryData(['stats'], event.data as unknown as StatsSummary)
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
       queryClient.invalidateQueries({ queryKey: ['proxies'] })
     }
   })

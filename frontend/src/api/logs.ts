@@ -2,6 +2,7 @@ import client from './client'
 
 export interface LogItem {
   id: number
+  tenant_id?: number | null
   client_ip: string | null
   method: string | null
   host: string | null
@@ -11,6 +12,7 @@ export interface LogItem {
   response_bytes: number | null
   created_at: string
 }
+
 
 export interface LogListResponse {
   items: LogItem[]

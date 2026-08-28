@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useRealtime } from '@/hooks/useRealtime'
+import { useTenant } from '@/lib/tenant'
 import { useTimezone } from '@/hooks/use-timezone'
 import { formatTime } from '@/lib/datetime'
 
@@ -114,6 +115,10 @@ export default function LogsPage() {
   const bufferRef = useRef<LogItem[]>([])
   const flushScheduledRef = useRef(false)
 
+  const { activeTenant } = useTenant()
+  const activeTenantIdRef = useRef<number | null>(null)
+  activeTenantIdRef.current = activeTenant?.id ?? null
+
   useRealtime((event) => {
     if (event.topic !== 'logs') return
     if (!liveRef.current) {
@@ -121,6 +126,10 @@ export default function LogsPage() {
       return
     }
     const log = event.data as unknown as LogItem
+    // Only prepend log if it matches active tenant (or if tenant_id is not specified)
+    if (log.tenant_id && activeTenantIdRef.current && log.tenant_id !== activeTenantIdRef.current) {
+      return
+    }
     bufferRef.current.push(log)
     if (flushScheduledRef.current) return
     flushScheduledRef.current = true

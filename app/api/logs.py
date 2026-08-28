@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/logs", tags=["logs"])
 def _to_response(log: RequestLog) -> RequestLogResponse:
     return RequestLogResponse(
         id=log.id,
+        tenant_id=log.tenant_id,
         client_ip=log.client_ip,
         method=log.method,
         host=log.host,

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class RequestLogResponse(BaseModel):
     id: int
+    tenant_id: int | None = None
     client_ip: str | None = None
     method: str | None = None
     host: str | None = None

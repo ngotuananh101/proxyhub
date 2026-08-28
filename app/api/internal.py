@@ -70,6 +70,7 @@ def receive_gateway_log(
 
     response = RequestLogResponse(
         id=log.id,
+        tenant_id=log.tenant_id,
         client_ip=log.client_ip,
         method=log.method,
         host=log.host,
