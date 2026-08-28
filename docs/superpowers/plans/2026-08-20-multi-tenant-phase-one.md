@@ -855,19 +855,90 @@ git commit -m "feat: add tenant and membership CRUD API"
 
 ---
 
-### Task 5: Tenant-aware dependencies and scoping (proxies, stats, logs, sources)
+### Task 5: Seed default tenant on startup + migrate existing data
+
+**Files:**
+- Modify: `app/main.py:24-31`
+- Test: `tests/test_tenant_seeding.py`
+
+**Interfaces:**
+- Consumes: `ensure_default_tenant` from Task 1, migration script from Task 3.
+- Produces: Default tenant auto-seeded on startup so all subsequent scoped queries find a valid tenant.
+
+- [ ] **Step 1: Write test verifying default tenant seeded on startup**
+
+Create `tests/test_tenant_seeding.py`:
+
+```python
+from fastapi.testclient import TestClient
+from sqlmodel import Session, select
+
+from app.models.tenant import Tenant
+
+
+def test_startup_seeds_default_tenant(engine):
+    from app.main import create_app
+
+    app = create_app(engine)
+    with TestClient(app):
+        with Session(engine) as session:
+            tenant = session.exec(
+                select(Tenant).where(Tenant.slug == "default")
+            ).first()
+            assert tenant is not None
+            assert tenant.name == "Default"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `python -m pytest tests/test_tenant_seeding.py -v`
+Expected: FAIL — default tenant not seeded in lifespan yet.
+
+- [ ] **Step 3: Seed default tenant in app startup lifespan**
+
+In `app/main.py`, add `ensure_default_tenant` in `lifespan`:
+
+```python
+from app.services.tenant_service import ensure_default_tenant
+```
+
+Inside `lifespan`:
+
+```python
+        with Session(db_engine or engine) as session:
+            seed_settings(session)
+            seed_default_sources(session)
+            ensure_default_tenant(session)
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `python -m pytest tests/test_tenant_seeding.py -v`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/main.py tests/test_tenant_seeding.py
+git commit -m "feat: seed default tenant on startup"
+```
+
+---
+
+### Task 6: Tenant-aware dependencies and scoping (proxies, stats, logs, sources)
 
 **Files:**
 - Modify: `app/api/deps.py`
+- Modify: `app/schemas/proxy.py`
 - Modify: `app/api/proxies.py`
 - Modify: `app/api/stats.py`
 - Modify: `app/api/logs.py`
 - Modify: `app/api/sources.py`
-- Modify: `app/schemas/proxy.py`
 - Test: `tests/test_tenant_scoping.py`
 
 **Interfaces:**
-- Produces: `get_active_tenant_id`, `require_tenant_role`.
+- Consumes: `TenantMembership`, `ensure_default_tenant`.
+- Produces: `get_active_tenant_id`, `require_tenant_role`, tenant-scoped CRUD across proxies, stats, logs, sources; `ProxyResponse.tenant_id`.
 
 - [ ] **Step 1: Add tenant dependencies to `app/api/deps.py`**
 
@@ -884,23 +955,32 @@ def get_active_tenant_id(
     x_tenant_id: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> int:
-    if current_user.is_admin:
-        memberships = session.exec(
-            select(TenantMembership).where(TenantMembership.user_id == current_user.id)
-        ).all()
-    else:
-        memberships = session.exec(
-            select(TenantMembership).where(TenantMembership.user_id == current_user.id)
-        ).all()
-        if not memberships:
-            raise HTTPException(status_code=403, detail="No tenant membership")
+    from app.services.tenant_service import ensure_default_tenant
 
+    memberships = session.exec(
+        select(TenantMembership).where(TenantMembership.user_id == current_user.id)
+    ).all()
+
+    requested = None
     if x_tenant_id is not None:
         try:
             requested = int(x_tenant_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid tenant id")
-        if current_user.is_admin or any(m.tenant_id == requested for m in memberships):
+
+    # Super admin may access any tenant, even without membership.
+    if current_user.is_admin:
+        if requested is not None:
+            return requested
+        if memberships:
+            return memberships[0].tenant_id
+        return ensure_default_tenant(session).id
+
+    if not memberships:
+        raise HTTPException(status_code=403, detail="No tenant membership")
+
+    if requested is not None:
+        if any(m.tenant_id == requested for m in memberships):
             return requested
         raise HTTPException(status_code=403, detail="Not a member of this tenant")
 
@@ -913,27 +993,46 @@ def require_tenant_role(min_role: str):
         x_tenant_id: str | None = Header(default=None),
         session: Session = Depends(get_session),
     ) -> User:
-        membership = get_active_tenant_id(
+        if current_user.is_admin:
+            return current_user
+        tenant_id = get_active_tenant_id(
             current_user=current_user,
             x_tenant_id=x_tenant_id,
             session=session,
         )
-        if current_user.is_admin:
-            return current_user
         m = session.exec(
             select(TenantMembership).where(
-                TenantMembership.tenant_id == membership,
+                TenantMembership.tenant_id == tenant_id,
                 TenantMembership.user_id == current_user.id,
-                TenantMembership.role == min_role,
             )
         ).first()
-        if m is None:
+        if m is None or m.role != min_role:
             raise HTTPException(status_code=403, detail="Insufficient role")
         return current_user
     return dependency
 ```
 
-- [ ] **Step 2: Write scoping tests**
+- [ ] **Step 2: Add `tenant_id` to `ProxyResponse` schema**
+
+Modify `app/schemas/proxy.py` — add `tenant_id` to `ProxyResponse`:
+
+```python
+class ProxyResponse(BaseModel):
+    id: int
+    tenant_id: int | None = None
+    scheme: str
+    host: str
+    port: int
+    username: str | None = None
+    password: str | None = None
+    status: str
+    latency_ms: float | None = None
+    last_checked_at: str | None = None
+    created_at: str
+    updated_at: str
+```
+
+- [ ] **Step 3: Write scoping tests**
 
 Create `tests/test_tenant_scoping.py`:
 
@@ -943,6 +1042,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.security import hash_password
+from app.models.tenant import Tenant, TenantMembership
 from app.models.user import User
 
 
@@ -953,8 +1053,8 @@ def client_fixture(engine):
     return TestClient(app)
 
 
-@pytest.fixture(name="auth_headers")
-def auth_headers_fixture(engine, client):
+@pytest.fixture(name="admin_headers")
+def admin_headers_fixture(engine, client):
     with Session(engine) as session:
         user = User(
             username="admin", hashed_password=hash_password("admin123"), is_admin=True
@@ -966,145 +1066,142 @@ def auth_headers_fixture(engine, client):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_create_proxy_sets_default_tenant(client, auth_headers):
+def test_create_proxy_sets_default_tenant(client, admin_headers):
     resp = client.post(
         "/api/proxies",
         json={"scheme": "http", "host": "1.2.3.4", "port": 8080},
-        headers=auth_headers,
+        headers=admin_headers,
     )
     assert resp.status_code == 201
     data = resp.json()
-    # With super admin and no memberships, this defaults to first
-    # membership or returns unscoped.
-    assert "tenant_id" in data or data["id"] is not None
+    default = client.get("/api/tenants", headers=admin_headers).json()
+    default_ids = [t["id"] for t in default if t["slug"] == "default"]
+    assert len(default_ids) == 1
+    assert data["tenant_id"] == default_ids[0]
+
+
+def test_tenant_isolation_proxies(client, admin_headers, engine):
+    # Create two tenants
+    t1 = client.post("/api/tenants", json={"name": "Tenant A", "slug": "tenant-a"}, headers=admin_headers).json()
+    t2 = client.post("/api/tenants", json={"name": "Tenant B", "slug": "tenant-b"}, headers=admin_headers).json()
+
+    # Create user in tenant A
+    with Session(engine) as session:
+        user_a = User(username="user_a", hashed_password=hash_password("pass123"), is_admin=False)
+        session.add(user_a)
+        session.commit()
+        session.refresh(user_a)
+        session.add(TenantMembership(tenant_id=t1["id"], user_id=user_a.id, role="member"))
+        session.commit()
+
+    # Login as user_a
+    resp = client.post("/api/auth/login", json={"username": "user_a", "password": "pass123"})
+    user_a_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    # Admin creates proxy in tenant B
+    client.post(
+        "/api/proxies",
+        json={"scheme": "http", "host": "10.0.0.1", "port": 8080},
+        headers={**admin_headers, "X-Tenant-Id": str(t2["id"])},
+    )
+
+    # User A should NOT see proxy from tenant B
+    list_resp = client.get("/api/proxies", headers=user_a_headers)
+    assert list_resp.status_code == 200
+    assert list_resp.json()["total"] == 0
 ```
 
-- [ ] **Step 3: Wire `get_active_tenant_id` into proxy list/create**
+- [ ] **Step 4: Scope `app/api/proxies.py`**
 
-Modify `app/api/proxies.py`:
-
-Change `list_proxies` signature to include:
+Update `_proxy_to_response`:
 
 ```python
-    tenant_id: int = Depends(get_active_tenant_id),
+def _proxy_to_response(p: Proxy) -> ProxyResponse:
+    return ProxyResponse(
+        id=p.id,
+        tenant_id=p.tenant_id,
+        scheme=p.scheme,
+        host=p.host,
+        port=p.port,
+        username=p.username,
+        password=p.password,
+        status=p.status.value,
+        latency_ms=p.latency_ms,
+        last_checked_at=utc_isoformat(p.last_checked_at) if p.last_checked_at else None,
+        created_at=utc_isoformat(p.created_at),
+        updated_at=utc_isoformat(p.updated_at),
+    )
 ```
 
-filter query:
+Update `create_proxy`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Unique check: `where(Proxy.tenant_id == tenant_id, Proxy.scheme == body.scheme, Proxy.host == body.host, Proxy.port == body.port)`
+- Instantiate: `Proxy(**body.model_dump(), tenant_id=tenant_id)`
 
-```python
-    query = select(Proxy).where(Proxy.tenant_id == tenant_id)
-```
+Update `list_proxies`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Query: `select(Proxy).where(Proxy.tenant_id == tenant_id)`
 
-Change `create_proxy` signature:
+Update `get_proxy`, `update_proxy`, `delete_proxy`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Query/get: ensure `proxy.tenant_id == tenant_id` (raise 404 if not matched)
+- On `update_proxy` unique conflict check: include `Proxy.tenant_id == tenant_id`
 
-```python
-    tenant_id: int = Depends(get_active_tenant_id),
-```
+Update `delete_many_proxies`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Only delete proxies where `proxy.tenant_id == tenant_id`
 
-and add:
+Update `clear_dead_proxies`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Filter: `where(Proxy.status == ProxyStatus.DEAD, Proxy.tenant_id == tenant_id)`
 
-```python
-    proxy = Proxy(**body.model_dump(), tenant_id=tenant_id)
-```
+Update `import_proxies_endpoint`:
+- Pass `tenant_id` to `import_proxies`
 
-Update unique-check in `create_proxy`:
+- [ ] **Step 5: Scope `app/api/stats.py`, `app/api/logs.py`, `app/api/sources.py`**
 
-```python
-    existing = session.exec(
-        select(Proxy).where(
-            Proxy.tenant_id == tenant_id,
-            Proxy.scheme == body.scheme,
-            Proxy.host == body.host,
-            Proxy.port == body.port,
-        )
-    ).first()
-```
+In `app/api/stats.py`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Filter every count by `Proxy.tenant_id == tenant_id`
 
-- [ ] **Step 4: Scope stats, logs, sources**
+In `app/api/logs.py`:
+- Inject `tenant_id: int = Depends(get_active_tenant_id)`
+- Filter list query: `query.where(RequestLog.tenant_id == tenant_id)`
 
-Modify `app/api/stats.py`:
+In `app/api/sources.py`:
+- `list_sources`: filter `ProxySource.tenant_id == tenant_id`
+- `create_source`: set `ProxySource(**body.model_dump(), tenant_id=tenant_id)`
+- `update_source`, `delete_source`, `fetch_source_now`: ensure `source.tenant_id == tenant_id`
 
-```python
-def stats_summary(
-    session: Session = Depends(get_session),
-    tenant_id: int = Depends(get_active_tenant_id),
-):
-    total = session.exec(
-        select(func.count(Proxy.id)).where(Proxy.tenant_id == tenant_id)
-    ).one()
-    alive = session.exec(
-        select(func.count(Proxy.id)).where(
-            Proxy.tenant_id == tenant_id,
-            Proxy.status == ProxyStatus.ALIVE,
-        )
-    ).one()
-    ...
-```
+- [ ] **Step 6: Run tests to verify scoping passes**
 
-Modify `app/api/logs.py`:
+Run: `python -m pytest tests/test_tenant_scoping.py tests/test_proxies_api.py tests/test_stats_api.py -v`
+Expected: PASS.
 
-See existing file structure. Filter by tenant in list query.
+- [ ] **Step 7: Run full test suite to check for regressions**
 
-Modify `app/api/sources.py`:
+Run: `python -m pytest -q`
+Expected: ALL PASS.
 
-Filter `list_sources` by tenant, `create_source` set tenant_id.
-
-- [ ] **Step 5: Run tests to verify pass**
-
-Run: `python -m pytest tests/test_proxies_api.py tests/test_tenant_scoping.py tests/test_stats_api.py -v`
-Expected: all pass.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add app/api/deps.py app/api/proxies.py app/api/stats.py app/api/logs.py app/api/sources.py app/schemas/proxy.py tests/test_tenant_scoping.py
+git add app/api/deps.py app/schemas/proxy.py app/api/proxies.py app/api/stats.py app/api/logs.py app/api/sources.py tests/test_tenant_scoping.py
 git commit -m "feat: scope proxy, stats, logs, and sources APIs by tenant"
 ```
 
 ---
 
-### Task 6: Migration to default tenant
+## Self-Review Checklist
 
-**Files:**
-- Modify: `app/main.py:24-31`
-- Create: nothing new (scripts already in Task 3)
-- Modify: `tests/test_models.py`
-
-**Interfaces:**
-- Consumes: `ensure_default_tenant` from Task 1.
-
-- [ ] **Step 1: Seed default tenant in app startup**
-
-In `app/main.py`, in `lifespan`, add `ensure_default_tenant` call alongside `seed_settings`:
-
-```python
-from app.services.tenant_service import ensure_default_tenant
-...
-        with Session(db_engine or engine) as session:
-            seed_settings(session)
-            seed_default_sources(session)
-            ensure_default_tenant(session)
-```
-
-- [ ] **Step 2: Verify startup seed does not break**
-
-Run: `python -m pytest tests/test_models.py tests/test_tenant_scoping.py -v`
-Expected: PASS.
-
-- [ ] **Step 3: Run full test suite**
-
-Run: `python -m pytest -q`
-Expected: PASS (report count).
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add app/main.py
-git commit -m "feat: seed default tenant on startup"
-```
-
----
-
-## Self-Review Notes
-
-After tasks, run `python -m pytest -q` and fix regressions. Confirmed in plan.
+1. **Spec coverage:**
+   - `tenants` and `tenant_memberships` models → Task 1
+   - `tenant_id` columns on `proxies`, `proxysources`, `requestlogs` + unique constraint update → Task 2
+   - `select_random_proxy(session, tenant_id=None)` → Task 2
+   - Alembic migration + data migration script → Task 3
+   - Tenant CRUD + membership API (`/api/tenants`) → Task 4
+   - Seed default tenant on startup → Task 5 (before scoping)
+   - Tenant dependencies (`get_active_tenant_id`, `require_tenant_role`) + API scoping → Task 6
+2. **Order check:** Default tenant is seeded on startup (Task 5) BEFORE query scoping is enabled (Task 6), so existing tests and unmigrated environments don't see empty results.
+3. **Schema consistency:** `ProxyResponse` includes `tenant_id: int | None = None` and `_proxy_to_response` maps `p.tenant_id`.
+4. **All tests passing:** Final step of Task 6 runs full pytest suite.
