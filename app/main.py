@@ -18,6 +18,7 @@ from app.core.database import create_db_and_tables, engine
 from app.services.events import start_relay, stop_relay
 from app.services.settings_service import seed_settings
 from app.services.source_service import seed_default_sources
+from app.services.tenant_service import ensure_default_tenant
 
 
 def create_app(db_engine=None):
@@ -29,6 +30,7 @@ def create_app(db_engine=None):
         with Session(db_engine or engine) as session:
             seed_settings(session)
             seed_default_sources(session)
+            ensure_default_tenant(session)
         start_relay()
         yield
         await stop_relay()
