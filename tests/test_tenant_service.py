@@ -70,3 +70,26 @@ def test_ensure_default_tenant_idempotent(session):
     assert first.id == second.id
     assert second.name == "Default"
     assert second.slug == "default"
+
+
+def test_ensure_default_tenant_migrates_null_tenant_rows(session):
+    from app.models.proxy import Proxy
+    from app.models.source import ProxySource
+
+    p = Proxy(scheme="http", host="8.8.8.8", port=8080, tenant_id=None)
+    s = ProxySource(name="Test Source", url="http://example.com/proxies.txt", tenant_id=None)
+    session.add(p)
+    session.add(s)
+    session.commit()
+    session.refresh(p)
+    session.refresh(s)
+    assert p.tenant_id is None
+    assert s.tenant_id is None
+
+    default_tenant = ensure_default_tenant(session)
+    session.refresh(p)
+    session.refresh(s)
+
+    assert p.tenant_id == default_tenant.id
+    assert s.tenant_id == default_tenant.id
+
