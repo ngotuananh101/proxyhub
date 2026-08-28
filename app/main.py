@@ -12,6 +12,7 @@ from app.api.proxies import router as proxies_router
 from app.api.settings import router as settings_router
 from app.api.sources import router as sources_router
 from app.api.stats import router as stats_router
+from app.api.tenants import router as tenants_router
 from app.core.config import settings, validate_secrets
 from app.core.database import create_db_and_tables, engine
 from app.services.events import start_relay, stop_relay
@@ -50,6 +51,7 @@ def create_app(db_engine=None):
     app.include_router(logs_router)
     app.include_router(events_router)
     app.include_router(internal_router)
+    app.include_router(tenants_router)
 
     if db_engine is not None:
         # Override get_session dependency for testing
