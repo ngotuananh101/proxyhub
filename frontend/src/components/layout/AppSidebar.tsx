@@ -1,5 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
+  Building2Icon,
   DownloadIcon,
   GlobeIcon,
   ScrollTextIcon,
@@ -7,6 +9,7 @@ import {
   ShieldIcon,
   UserIcon,
 } from 'lucide-react'
+import { getMe } from '@/api/auth'
 import {
   Sidebar,
   SidebarContent,
@@ -24,12 +27,16 @@ const navItems = [
   { to: '/', label: 'Proxies', icon: GlobeIcon },
   { to: '/sources', label: 'Sources', icon: DownloadIcon },
   { to: '/logs', label: 'Logs', icon: ScrollTextIcon },
+  { to: '/tenants', label: 'Tenants', icon: Building2Icon, adminOnly: true },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
   { to: '/profile', label: 'Profile', icon: UserIcon },
 ]
 
 export function AppSidebar() {
   const { pathname } = useLocation()
+  const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe })
+
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || user?.is_admin === true)
 
   return (
     <Sidebar>
@@ -49,7 +56,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const isActive = item.to === '/' ? pathname === '/' : pathname.startsWith(item.to)
                 return (
                   <SidebarMenuItem key={item.to}>
