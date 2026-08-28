@@ -20,6 +20,7 @@ class ProxyUpdate(BaseModel):
 
 class ProxyResponse(BaseModel):
     id: int
+    tenant_id: int | None = None
     scheme: str
     host: str
     port: int

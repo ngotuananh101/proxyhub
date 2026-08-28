@@ -2,11 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.datetime_utils import is_valid_timezone, utc_isoformat
 from app.core.security import hash_password
 from app.models.log import RequestLog
+from app.models.tenant import Tenant
 from app.models.user import User
 
 
@@ -64,7 +65,8 @@ def auth_headers_fixture(engine, client):
 class TestApiEmitsUtcOffsets:
     def test_logs_created_at_has_utc_offset(self, client, auth_headers, engine):
         with Session(engine) as session:
-            session.add(RequestLog(method="GET", host="example.com", path="/"))
+            tenant = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
+            session.add(RequestLog(method="GET", host="example.com", path="/", tenant_id=tenant.id))
             session.commit()
 
         resp = client.get("/api/logs", headers=auth_headers)

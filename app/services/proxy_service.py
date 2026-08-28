@@ -31,7 +31,7 @@ def parse_proxy_line(line: str) -> dict | None:
     }
 
 
-def import_proxies(session: Session, text: str) -> ImportResult:
+def import_proxies(session: Session, text: str, tenant_id: int | None = None) -> ImportResult:
     imported = 0
     duplicates = 0
     invalid: list[InvalidLine] = []
@@ -47,6 +47,7 @@ def import_proxies(session: Session, text: str) -> ImportResult:
 
         existing = session.exec(
             select(Proxy).where(
+                Proxy.tenant_id == tenant_id,
                 Proxy.scheme == parsed["scheme"],
                 Proxy.host == parsed["host"],
                 Proxy.port == parsed["port"],
@@ -56,7 +57,7 @@ def import_proxies(session: Session, text: str) -> ImportResult:
             duplicates += 1
             continue
 
-        proxy = Proxy(**parsed)
+        proxy = Proxy(**parsed, tenant_id=tenant_id)
         session.add(proxy)
         imported += 1
 

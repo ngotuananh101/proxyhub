@@ -29,7 +29,7 @@ def normalize_line(line: str) -> str | None:
     return line
 
 
-def import_source_text(session: Session, text: str) -> tuple[int, int]:
+def import_source_text(session: Session, text: str, tenant_id: int | None = None) -> tuple[int, int]:
     """Import proxies from fetched text. Returns (imported, duplicates).
 
     Existing proxies are looked up with a single bulk query instead of one
@@ -57,11 +57,12 @@ def import_source_text(session: Session, text: str) -> tuple[int, int]:
         return 0, 0
 
     keys = [(item["scheme"], item["host"], item["port"]) for item in parsed]
-    existing_proxies = session.exec(
-        select(Proxy).where(
-            tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(keys)
-        )
-    ).all()
+    query = select(Proxy).where(
+        tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(keys)
+    )
+    if tenant_id is not None:
+        query = query.where(Proxy.tenant_id == tenant_id)
+    existing_proxies = session.exec(query).all()
     existing_map = {(p.scheme, p.host, p.port): p for p in existing_proxies}
 
     imported = 0
@@ -77,7 +78,7 @@ def import_source_text(session: Session, text: str) -> tuple[int, int]:
                 proxy.updated_at = now
                 session.add(proxy)
             continue
-        session.add(Proxy(**item))
+        session.add(Proxy(**item, tenant_id=tenant_id))
         imported += 1
 
     session.commit()
@@ -122,7 +123,7 @@ def is_due(source: ProxySource, now: datetime) -> bool:
 
 
 def fetch_and_import(
-    session: Session, source: ProxySource, timeout: float, retention_days: float
+    session: Session, source: ProxySource, timeout: float, retention_days: float, tenant_id: int | None = None
 ) -> str:
     """Fetch one source, import its proxies, record the outcome.
 
@@ -130,7 +131,7 @@ def fetch_and_import(
     """
     try:
         text = asyncio.run(_download(source.url, timeout))
-        imported, duplicates = import_source_text(session, text)
+        imported, duplicates = import_source_text(session, text, tenant_id=tenant_id)
         purged = purge_old_dead_proxies(session, retention_days)
         status = f"ok: {imported} imported, {duplicates} duplicates"
         if purged:
@@ -182,10 +183,12 @@ DEFAULT_SOURCES = [
 ]
 
 
-def seed_default_sources(session: Session) -> None:
+def seed_default_sources(session: Session, tenant_id: int | None = None) -> None:
     """Seed the verified starter sources on first startup. Idempotent."""
     for name, url in DEFAULT_SOURCES:
-        existing = session.exec(select(ProxySource).where(ProxySource.url == url)).first()
+        existing = session.exec(
+            select(ProxySource).where(ProxySource.url == url, ProxySource.tenant_id == tenant_id)
+        ).first()
         if existing is None:
-            session.add(ProxySource(name=name, url=url))
+            session.add(ProxySource(name=name, url=url, tenant_id=tenant_id))
     session.commit()

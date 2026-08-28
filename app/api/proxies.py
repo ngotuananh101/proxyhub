@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, col, func, select
 
-from app.api.deps import get_current_user
+from app.api.deps import get_active_tenant_id, get_current_user
 from app.core.database import get_session
 from app.core.datetime_utils import utc_isoformat
 from app.models.proxy import Proxy, ProxyStatus
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/proxies", tags=["proxies"])
 def _proxy_to_response(p: Proxy) -> ProxyResponse:
     return ProxyResponse(
         id=p.id,
+        tenant_id=p.tenant_id,
         scheme=p.scheme,
         host=p.host,
         port=p.port,
@@ -43,10 +44,12 @@ def _proxy_to_response(p: Proxy) -> ProxyResponse:
 def create_proxy(
     body: ProxyCreate,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     existing = session.exec(
         select(Proxy).where(
+            Proxy.tenant_id == tenant_id,
             Proxy.scheme == body.scheme,
             Proxy.host == body.host,
             Proxy.port == body.port,
@@ -54,7 +57,7 @@ def create_proxy(
     ).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proxy already exists")
-    proxy = Proxy(**body.model_dump())
+    proxy = Proxy(**body.model_dump(), tenant_id=tenant_id)
     session.add(proxy)
     session.commit()
     session.refresh(proxy)
@@ -69,9 +72,10 @@ def list_proxies(
     scheme: str | None = None,
     q: str | None = None,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
-    query = select(Proxy)
+    query = select(Proxy).where(Proxy.tenant_id == tenant_id)
     if status:
         query = query.where(Proxy.status == status)
     if scheme:
@@ -94,9 +98,10 @@ def list_proxies(
 def import_proxies_endpoint(
     body: ImportRequest,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
-    return import_proxies(session, body.text)
+    return import_proxies(session, body.text, tenant_id=tenant_id)
 
 
 @router.post("/check-all", status_code=status.HTTP_202_ACCEPTED)
@@ -108,10 +113,13 @@ def trigger_check_all(_: User = Depends(get_current_user)):
 @router.post("/clear-dead")
 def clear_dead_proxies(
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     """Delete every proxy currently marked dead."""
-    dead = session.exec(select(Proxy).where(Proxy.status == ProxyStatus.DEAD)).all()
+    dead = session.exec(
+        select(Proxy).where(Proxy.status == ProxyStatus.DEAD, Proxy.tenant_id == tenant_id)
+    ).all()
     for proxy in dead:
         session.delete(proxy)
     session.commit()
@@ -122,10 +130,11 @@ def clear_dead_proxies(
 def get_proxy(
     proxy_id: int,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     proxy = session.get(Proxy, proxy_id)
-    if not proxy:
+    if not proxy or proxy.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Proxy not found")
     return _proxy_to_response(proxy)
 
@@ -135,10 +144,11 @@ def update_proxy(
     proxy_id: int,
     body: ProxyUpdate,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     proxy = session.get(Proxy, proxy_id)
-    if not proxy:
+    if not proxy or proxy.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Proxy not found")
 
     update_data = body.model_dump(exclude_unset=True)
@@ -164,6 +174,7 @@ def update_proxy(
     if (new_scheme, new_host, new_port) != (proxy.scheme, proxy.host, proxy.port):
         conflict = session.exec(
             select(Proxy).where(
+                Proxy.tenant_id == tenant_id,
                 Proxy.scheme == new_scheme,
                 Proxy.host == new_host,
                 Proxy.port == new_port,
@@ -186,10 +197,11 @@ def update_proxy(
 def delete_proxy(
     proxy_id: int,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     proxy = session.get(Proxy, proxy_id)
-    if not proxy:
+    if not proxy or proxy.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Proxy not found")
     session.delete(proxy)
     session.commit()
@@ -199,10 +211,11 @@ def delete_proxy(
 def delete_many_proxies(
     body: DeleteManyRequest,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     for proxy_id in body.ids:
         proxy = session.get(Proxy, proxy_id)
-        if proxy:
+        if proxy and proxy.tenant_id == tenant_id:
             session.delete(proxy)
     session.commit()

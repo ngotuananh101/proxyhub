@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from app.core.security import hash_password
 from app.models.log import RequestLog
+from app.models.tenant import Tenant, TenantMembership
 from app.models.user import User
 
 INTERNAL_HEADERS = {"X-Internal-Key": "test-internal-key"}
@@ -31,7 +32,15 @@ def _no_broadcast(monkeypatch):
 @pytest.fixture(name="auth_headers")
 def auth_headers_fixture(engine, client):
     with Session(engine) as session:
-        session.add(User(username="loguser", hashed_password=hash_password("logpass123")))
+        user = User(username="loguser", hashed_password=hash_password("logpass123"))
+        session.add(user)
+        session.commit()
+        tenant = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
+        if tenant is None:
+            tenant = Tenant(name="Default", slug="default")
+            session.add(tenant)
+            session.commit()
+        session.add(TenantMembership(user_id=user.id, tenant_id=tenant.id, role="member"))
         session.commit()
     resp = client.post(
         "/api/auth/login", json={"username": "loguser", "password": "logpass123"}
@@ -61,7 +70,9 @@ def _log(
 
 def _seed_logs(engine, logs: list[RequestLog]) -> None:
     with Session(engine) as session:
+        tenant = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
         for log in logs:
+            log.tenant_id = tenant.id
             session.add(log)
         session.commit()
 

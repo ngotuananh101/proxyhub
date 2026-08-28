@@ -29,8 +29,8 @@ def create_app(db_engine=None):
             create_db_and_tables()
         with Session(db_engine or engine) as session:
             seed_settings(session)
-            seed_default_sources(session)
-            ensure_default_tenant(session)
+            default_tenant = ensure_default_tenant(session)
+            seed_default_sources(session, tenant_id=default_tenant.id)
         start_relay()
         yield
         await stop_relay()

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, col, func, or_, select
 
-from app.api.deps import get_current_user
+from app.api.deps import get_active_tenant_id, get_current_user
 from app.core.database import get_session
 from app.core.datetime_utils import utc_isoformat
 from app.models.log import RequestLog
@@ -50,9 +50,10 @@ def list_logs(
     start: str | None = None,
     end: str | None = None,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
-    query = select(RequestLog)
+    query = select(RequestLog).where(RequestLog.tenant_id == tenant_id)
     if method:
         query = query.where(RequestLog.method == method.upper())
     if q:

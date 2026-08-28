@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
-from app.api.deps import get_current_admin, get_current_user
+from app.api.deps import get_active_tenant_id, get_current_user
 from app.core.database import get_session
 from app.core.datetime_utils import utc_isoformat
 from app.models.source import ProxySource
@@ -29,18 +29,20 @@ def _to_response(s: ProxySource) -> SourceResponse:
 @router.get("", response_model=list[SourceResponse])
 def list_sources(
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
-    return [_to_response(s) for s in session.exec(select(ProxySource)).all()]
+    return [_to_response(s) for s in session.exec(select(ProxySource).where(ProxySource.tenant_id == tenant_id)).all()]
 
 
 @router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
 def create_source(
     body: SourceCreate,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_admin),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
-    source = ProxySource(**body.model_dump())
+    source = ProxySource(**body.model_dump(), tenant_id=tenant_id)
     session.add(source)
     session.commit()
     session.refresh(source)
@@ -52,10 +54,11 @@ def update_source(
     source_id: int,
     body: SourceUpdate,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_admin),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     source = session.get(ProxySource, source_id)
-    if not source:
+    if not source or source.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(source, key, value)
@@ -69,10 +72,11 @@ def update_source(
 def delete_source(
     source_id: int,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_admin),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     source = session.get(ProxySource, source_id)
-    if not source:
+    if not source or source.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
     session.delete(source)
     session.commit()
@@ -82,10 +86,11 @@ def delete_source(
 def fetch_source_now(
     source_id: int,
     session: Session = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_active_tenant_id),
 ):
     source = session.get(ProxySource, source_id)
-    if not source:
+    if not source or source.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
     values = get_settings(session)
     status_msg = fetch_and_import(
@@ -93,5 +98,6 @@ def fetch_source_now(
         source,
         timeout=float(values["SOURCE_FETCH_TIMEOUT"]),
         retention_days=float(values["DEAD_PROXY_RETENTION_DAYS"]),
+        tenant_id=tenant_id,
     )
     return {"detail": "Fetch completed", "status": status_msg}
