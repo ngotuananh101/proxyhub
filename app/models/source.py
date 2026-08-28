@@ -8,6 +8,7 @@ class ProxySource(SQLModel, table=True):
     __tablename__ = "proxysources"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     name: str
     url: str
     enabled: bool = Field(default=True, index=True)

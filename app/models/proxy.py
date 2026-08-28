@@ -14,10 +14,14 @@ class ProxyStatus(str, enum.Enum):
 class Proxy(SQLModel, table=True):
     __tablename__ = "proxies"
     __table_args__ = (
-        UniqueConstraint("scheme", "host", "port", name="uq_proxy_scheme_host_port"),
+        UniqueConstraint(
+            "tenant_id", "scheme", "host", "port",
+            name="uq_proxy_tenant_scheme_host_port",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     scheme: str = Field(index=True)  # http | https
     host: str = Field(index=True)
     port: int

@@ -91,3 +91,35 @@ class TestSelectRandomProxy:
 
     def test_select_empty_pool(self, session):
         assert select_random_proxy(session) is None
+
+    def test_select_with_tenant_id_filter(self, session):
+        # tenant 1 proxies
+        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1))
+        # tenant 2 proxies
+        session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.ALIVE, tenant_id=2))
+        session.add(Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.ALIVE, tenant_id=2))
+        # unscoped proxy (tenant_id=None)
+        session.add(Proxy(scheme="http", host="4.4.4.4", port=80, status=ProxyStatus.ALIVE))
+        session.commit()
+
+        # Without tenant_id, all alive proxies are eligible
+        proxy = select_random_proxy(session)
+        assert proxy is not None
+        assert proxy.tenant_id in (1, 2, None)
+
+        # With tenant_id=1, only 1.1.1.1 is eligible
+        proxy = select_random_proxy(session, tenant_id=1)
+        assert proxy is not None
+        assert proxy.host == "1.1.1.1"
+
+        # With tenant_id=2, only 2.2.2.2 or 3.3.3.3 are eligible
+        proxy = select_random_proxy(session, tenant_id=2)
+        assert proxy is not None
+        assert proxy.host in ("2.2.2.2", "3.3.3.3")
+
+    def test_select_with_tenant_id_no_matches(self, session):
+        # No proxies for tenant 999
+        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1))
+        session.commit()
+
+        assert select_random_proxy(session, tenant_id=999) is None

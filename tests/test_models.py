@@ -29,13 +29,19 @@ def test_create_proxy(session):
 
 
 def test_proxy_unique_constraint(session):
-    p1 = Proxy(scheme="http", host="1.2.3.4", port=8080)
+    p1 = Proxy(scheme="http", host="1.2.3.4", port=8080, tenant_id=1)
     session.add(p1)
     session.commit()
 
-    p2 = Proxy(scheme="http", host="1.2.3.4", port=8080)
+    p2 = Proxy(scheme="http", host="1.2.3.4", port=8080, tenant_id=1)
     session.add(p2)
     import pytest
     from sqlalchemy.exc import IntegrityError
     with pytest.raises(IntegrityError):
         session.commit()
+
+    # Proxies with different tenant_id should not conflict
+    session.rollback()
+    p3 = Proxy(scheme="http", host="1.2.3.4", port=8080, tenant_id=2)
+    session.add(p3)
+    session.commit()

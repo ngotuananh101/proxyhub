@@ -8,6 +8,7 @@ class RequestLog(SQLModel, table=True):
     __tablename__ = "requestlogs"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     client_ip: Optional[str] = None
     method: Optional[str] = None
     host: Optional[str] = None

@@ -64,13 +64,14 @@ def import_proxies(session: Session, text: str) -> ImportResult:
     return ImportResult(imported=imported, duplicates=duplicates, invalid=invalid)
 
 
-def select_random_proxy(session: Session) -> Proxy | None:
-    proxies = session.exec(
-        select(Proxy).where(
-            Proxy.status == ProxyStatus.ALIVE,
-            col(Proxy.scheme).in_(GATEWAY_SCHEMES),
-        )
-    ).all()
+def select_random_proxy(session: Session, tenant_id: int | None = None) -> Proxy | None:
+    stmt = select(Proxy).where(
+        Proxy.status == ProxyStatus.ALIVE,
+        col(Proxy.scheme).in_(GATEWAY_SCHEMES),
+    )
+    if tenant_id is not None:
+        stmt = stmt.where(Proxy.tenant_id == tenant_id)
+    proxies = session.exec(stmt).all()
     if not proxies:
         return None
     return random.choice(proxies)
