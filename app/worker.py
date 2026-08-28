@@ -254,7 +254,9 @@ def fetch_due_sources() -> int:
     try:
         fetched = 0
         with Session(_get_engine()) as session:
-            seed_default_sources(session)
+            from app.services.tenant_service import ensure_default_tenant
+            default_tenant = ensure_default_tenant(session)
+            seed_default_sources(session, tenant_id=default_tenant.id)
             values = get_settings(session)
             timeout = float(values["SOURCE_FETCH_TIMEOUT"])
             retention_days = float(values["DEAD_PROXY_RETENTION_DAYS"])
@@ -264,7 +266,7 @@ def fetch_due_sources() -> int:
                 if not is_due(source, now):
                     continue
                 fetch_and_import(
-                    session, source, timeout=timeout, retention_days=retention_days
+                    session, source, timeout=timeout, retention_days=retention_days, tenant_id=source.tenant_id
                 )
                 fetched += 1
 

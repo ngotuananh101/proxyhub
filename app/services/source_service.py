@@ -129,9 +129,10 @@ def fetch_and_import(
 
     Returns the status string stored on the source.
     """
+    effective_tenant_id = tenant_id if tenant_id is not None else source.tenant_id
     try:
         text = asyncio.run(_download(source.url, timeout))
-        imported, duplicates = import_source_text(session, text, tenant_id=tenant_id)
+        imported, duplicates = import_source_text(session, text, tenant_id=effective_tenant_id)
         purged = purge_old_dead_proxies(session, retention_days)
         status = f"ok: {imported} imported, {duplicates} duplicates"
         if purged:
