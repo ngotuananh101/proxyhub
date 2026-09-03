@@ -109,6 +109,7 @@ services:
       - .env
     environment:
       - GATEWAY_API_URL=http://backend:8000/internal/proxies
+      - GATEWAY_SESSION_URL=http://backend:8000/internal/gateway/session
       - GATEWAY_LOG_URL=http://backend:8000/internal/logs
     ports:
       - "${GATEWAY_PORT:-8899}:8899"
