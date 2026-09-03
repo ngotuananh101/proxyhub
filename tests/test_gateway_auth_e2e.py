@@ -39,9 +39,10 @@ def test_full_gateway_auth_lifecycle(client, engine):
         )
         session.add(proxy)
         session.commit()
+        tenant_id = tenant.id
+        token = create_access_token({"sub": str(user.id)})
 
-    token = create_access_token({"sub": str(user.id)})
-    api_headers = {"Authorization": f"Bearer {token}", "X-Tenant-Id": str(tenant.id)}
+    api_headers = {"Authorization": f"Bearer {token}", "X-Tenant-Id": str(tenant_id)}
 
     # 2. Admin creates a Basic credential via CRUD API
     create_resp = client.post(
@@ -83,7 +84,7 @@ def test_full_gateway_auth_lifecycle(client, engine):
     )
     assert ok_session.status_code == 200
     session_data = ok_session.json()
-    assert session_data["tenant_id"] == tenant.id
+    assert session_data["tenant_id"] == tenant_id
     assert session_data["credential_id"] == cred_id
     assert session_data["proxy"]["host"] == "192.168.99.1"
 
@@ -91,7 +92,7 @@ def test_full_gateway_auth_lifecycle(client, engine):
     log_allowed = client.post(
         "/internal/logs",
         json={
-            "tenant_id": tenant.id,
+            "tenant_id": tenant_id,
             "auth_credential_id": cred_id,
             "auth_status": "allowed",
             "client_ip": "1.2.3.4",
@@ -112,7 +113,7 @@ def test_full_gateway_auth_lifecycle(client, engine):
         allowed_row = logs[0]
         assert allowed_row.auth_status == "allowed"
         assert allowed_row.auth_credential_id == cred_id
-        assert allowed_row.tenant_id == tenant.id
+        assert allowed_row.tenant_id == tenant_id
 
         denied_row = logs[1]
         assert denied_row.auth_status == "denied"

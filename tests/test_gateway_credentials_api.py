@@ -219,8 +219,10 @@ def test_member_cannot_create_or_delete(client, engine):
         membership = TenantMembership(tenant_id=tenant.id, user_id=user.id, role=TenantRole.MEMBER)
         session.add(membership)
         session.commit()
+        tenant_id = tenant.id
+        token = create_access_token({"sub": str(user.id)})
 
-    headers = auth_headers(user, tenant.id)
+    headers = {"Authorization": f"Bearer {token}", "X-Tenant-Id": str(tenant_id)}
 
     # Member CAN list
     list_resp = client.get("/api/gateway-credentials", headers=headers)

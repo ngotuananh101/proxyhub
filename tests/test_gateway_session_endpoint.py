@@ -55,9 +55,10 @@ def test_session_basic_auth_success(client, engine):
         tenant = Tenant(name="Tenant A", slug="tenant-a")
         session.add(tenant)
         session.commit()
+        tenant_id = tenant.id
 
         cred = GatewayCredential(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             name="bot",
             auth_mode=AuthMode.BASIC,
             username="bot_user",
@@ -67,7 +68,7 @@ def test_session_basic_auth_success(client, engine):
         session.add(cred)
 
         proxy = Proxy(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             scheme="http",
             host="10.20.30.40",
             port=8080,
@@ -75,6 +76,7 @@ def test_session_basic_auth_success(client, engine):
         )
         session.add(proxy)
         session.commit()
+        cred_id = cred.id
 
     resp = client.post(
         "/internal/gateway/session",
@@ -83,8 +85,8 @@ def test_session_basic_auth_success(client, engine):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["tenant_id"] == tenant.id
-    assert data["credential_id"] == cred.id
+    assert data["tenant_id"] == tenant_id
+    assert data["credential_id"] == cred_id
     assert data["auth_mode"] == "basic"
     assert data["proxy"]["host"] == "10.20.30.40"
     assert data["proxy"]["port"] == 8080
@@ -92,7 +94,7 @@ def test_session_basic_auth_success(client, engine):
 
     # Verify last_used_at was updated
     with Session(engine) as session:
-        updated_cred = session.get(GatewayCredential, cred.id)
+        updated_cred = session.get(GatewayCredential, cred_id)
         assert updated_cred.last_used_at is not None
 
 
@@ -129,9 +131,10 @@ def test_session_ip_whitelist_success(client, engine):
         tenant = Tenant(name="Tenant C", slug="tenant-c")
         session.add(tenant)
         session.commit()
+        tenant_id = tenant.id
 
         cred = GatewayCredential(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             name="office-ip",
             auth_mode=AuthMode.IP_WHITELIST,
             cidrs="192.168.10.0/24",
@@ -140,7 +143,7 @@ def test_session_ip_whitelist_success(client, engine):
         session.add(cred)
 
         proxy = Proxy(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             scheme="http",
             host="10.20.30.50",
             port=3128,
@@ -156,7 +159,7 @@ def test_session_ip_whitelist_success(client, engine):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["tenant_id"] == tenant.id
+    assert data["tenant_id"] == tenant_id
     assert data["auth_mode"] == "ip_whitelist"
     assert data["proxy"]["host"] == "10.20.30.50"
 
