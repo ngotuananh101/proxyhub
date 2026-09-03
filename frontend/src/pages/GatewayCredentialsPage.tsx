@@ -5,13 +5,13 @@ import {
   fetchCredentials,
   updateCredential,
   deleteCredential,
-  CredentialItem,
-  CreatedCredentialResponse,
+  type CredentialItem,
+  type CreatedCredentialResponse,
 } from '@/api/credentials'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -23,9 +23,10 @@ import {
 import { CreateCredentialDialog } from '@/components/credentials/CreateCredentialDialog'
 import { OneTimePasswordDialog } from '@/components/credentials/OneTimePasswordDialog'
 import { useTenant } from '@/lib/tenant'
+import { toast } from '@/components/ui/toast'
 
 export default function GatewayCredentialsPage() {
-  const { currentTenant } = useTenant()
+  const { activeTenant } = useTenant()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [otpDialog, setOtpDialog] = useState<{ open: boolean; username?: string | null; password?: string | null }>({
@@ -33,14 +34,17 @@ export default function GatewayCredentialsPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['gateway-credentials', currentTenant?.id],
+    queryKey: ['gateway-credentials', activeTenant?.id],
     queryFn: fetchCredentials,
   })
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
       updateCredential(id, { is_active }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
+      toast.add({ type: 'success', title: 'Credential status updated' })
+    },
   })
 
   const rotateMutation = useMutation({
@@ -53,7 +57,10 @@ export default function GatewayCredentialsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteCredential,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
+      toast.add({ type: 'success', title: 'Credential deleted' })
+    },
   })
 
   return (
@@ -83,7 +90,7 @@ export default function GatewayCredentialsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Identity / CIDR</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Active</TableHead>
                 <TableHead>Last Used</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -114,9 +121,9 @@ export default function GatewayCredentialsPage() {
                       {cred.auth_mode === 'basic' ? cred.username : cred.cidrs}
                     </TableCell>
                     <TableCell>
-                      <Switch
+                      <Checkbox
                         checked={cred.is_active}
-                        onCheckedChange={(checked) =>
+                        onCheckedChange={(checked: boolean) =>
                           toggleActiveMutation.mutate({ id: cred.id, is_active: checked })
                         }
                       />

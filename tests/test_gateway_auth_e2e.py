@@ -22,7 +22,7 @@ def client_fixture(engine):
 def test_full_gateway_auth_lifecycle(client, engine):
     # 1. Setup tenant, admin user, alive proxy
     with Session(engine) as session:
-        user = User(username="superadmin", email="sa@test.com", password_hash=hash_password("pw"), is_admin=True)
+        user = User(username="superadmin", email="sa@test.com", hashed_password=hash_password("pw"), is_admin=True)
         session.add(user)
         tenant = Tenant(name="E2E Tenant", slug="e2e-tenant")
         session.add(tenant)

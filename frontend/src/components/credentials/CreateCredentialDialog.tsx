@@ -11,10 +11,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
-import { createCredential, CreatedCredentialResponse } from '@/api/credentials'
-import { useToast } from '@/components/ui/toast'
+import { createCredential, type CreatedCredentialResponse } from '@/api/credentials'
+import { toast } from '@/components/ui/toast'
 
 interface CreateCredentialDialogProps {
   open: boolean
@@ -28,7 +27,6 @@ export function CreateCredentialDialog({
   onSuccessCreated,
 }: CreateCredentialDialogProps) {
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const [name, setName] = useState('')
   const [authMode, setAuthMode] = useState<'basic' | 'ip_whitelist'>('basic')
   const [username, setUsername] = useState('')
@@ -38,17 +36,18 @@ export function CreateCredentialDialog({
     mutationFn: createCredential,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
+      toast.add({ type: 'success', title: `Credential '${data.name}' created` })
       onOpenChange(false)
       setName('')
       setUsername('')
       setCidrs('')
       onSuccessCreated(data)
     },
-    onError: (err: any) => {
-      toast({
-        title: 'Failed to create credential',
-        description: err.response?.data?.detail || 'An error occurred',
-        variant: 'destructive',
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.add({
+        type: 'error',
+        title: msg || 'Failed to create credential',
       })
     },
   })
@@ -87,20 +86,30 @@ export function CreateCredentialDialog({
 
             <div className="space-y-2">
               <Label>Authentication Type</Label>
-              <RadioGroup
-                value={authMode}
-                onValueChange={(v) => setAuthMode(v as 'basic' | 'ip_whitelist')}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="basic" id="r-basic" />
-                  <Label htmlFor="r-basic">Basic Auth</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="ip_whitelist" id="r-ip" />
-                  <Label htmlFor="r-ip">IP Whitelist</Label>
-                </div>
-              </RadioGroup>
+              <div className="flex gap-4 pt-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="auth_mode"
+                    value="basic"
+                    checked={authMode === 'basic'}
+                    onChange={() => setAuthMode('basic')}
+                    className="size-4 text-primary focus:ring-primary border-input"
+                  />
+                  Basic Auth
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="auth_mode"
+                    value="ip_whitelist"
+                    checked={authMode === 'ip_whitelist'}
+                    onChange={() => setAuthMode('ip_whitelist')}
+                    className="size-4 text-primary focus:ring-primary border-input"
+                  />
+                  IP Whitelist
+                </label>
+              </div>
             </div>
 
             {authMode === 'basic' ? (
