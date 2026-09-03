@@ -40,6 +40,20 @@ def create_db_and_tables(target_engine=None):
                         )
                     )
 
+    # Patch requestlogs with gateway auth columns if missing
+    if inspector.has_table("requestlogs"):
+        cols = {c["name"] for c in inspector.get_columns("requestlogs")}
+        if "auth_credential_id" not in cols:
+            with db_engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE requestlogs ADD COLUMN auth_credential_id INTEGER")
+                )
+        if "auth_status" not in cols:
+            with db_engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE requestlogs ADD COLUMN auth_status VARCHAR")
+                )
+
 
 def get_session():
     with Session(engine) as session:

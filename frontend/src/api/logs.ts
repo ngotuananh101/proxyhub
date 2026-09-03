@@ -3,6 +3,8 @@ import client from './client'
 export interface LogItem {
   id: number
   tenant_id?: number | null
+  auth_credential_id?: number | null
+  auth_status?: 'allowed' | 'denied' | null
   client_ip: string | null
   method: string | null
   host: string | null
@@ -12,7 +14,6 @@ export interface LogItem {
   response_bytes: number | null
   created_at: string
 }
-
 
 export interface LogListResponse {
   items: LogItem[]

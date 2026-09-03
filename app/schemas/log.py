@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class RequestLogResponse(BaseModel):
     id: int
     tenant_id: int | None = None
+    auth_credential_id: int | None = None
+    auth_status: str | None = None
     client_ip: str | None = None
     method: str | None = None
     host: str | None = None

@@ -1,9 +1,9 @@
-"""RotateProxyPlugin — proxy.py plugin that fetches a proxy from ProxyHub backend per request."""
+"""RotateProxyPlugin — proxy.py plugin that authenticates clients and fetches a proxy from ProxyHub backend per request."""
 import base64
 import logging
 import os
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from proxy.common.constants import COLON
@@ -17,40 +17,102 @@ from proxy.http.proxy import HttpProxyBasePlugin
 logger = logging.getLogger(__name__)
 
 GATEWAY_API_URL = os.environ.get("GATEWAY_API_URL", "http://localhost:8000/internal/proxies")
+GATEWAY_SESSION_URL = os.environ.get(
+    "GATEWAY_SESSION_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/gateway/session"
+)
 GATEWAY_LOG_URL = os.environ.get(
     "GATEWAY_LOG_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/logs"
 )
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
-API_TIMEOUT = 2.0
+API_TIMEOUT = 3.0
+
+HTTP_407_RAW = (
+    b"HTTP/1.1 407 Proxy Authentication Required\r\n"
+    b"Proxy-Authenticate: Basic realm=\"ProxyHub\"\r\n"
+    b"Content-Length: 0\r\n"
+    b"Connection: close\r\n\r\n"
+)
 
 
-def fetch_proxy_from_api(api_url: str, api_key: str) -> tuple[Optional[Url], Optional[str]]:
-    """Call the internal API to get one usable proxy and the default target URL.
-
-    Returns (Url, target_url) or (None, None).
-    """
+def extract_basic_auth(header_val: Optional[bytes]) -> Tuple[Optional[str], Optional[str]]:
+    """Extract (username, password) from Proxy-Authorization: Basic <b64> header."""
+    if not header_val:
+        return None, None
     try:
-        resp = httpx.get(
-            api_url,
-            params={"strategy": "random"},
+        parts = header_val.strip().split(b" ", 1)
+        if len(parts) != 2 or parts[0].lower() != b"basic":
+            return None, None
+        decoded = base64.b64decode(parts[1]).decode("utf-8")
+        if ":" in decoded:
+            u, p = decoded.split(":", 1)
+            return u, p
+        return decoded, ""
+    except Exception:
+        return None, None
+
+
+def build_407_response_bytes() -> bytes:
+    """Raw 407 response bytes sent to client when authentication fails."""
+    return HTTP_407_RAW
+
+
+def create_session_from_api(
+    session_url: str,
+    api_key: str,
+    client_ip: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+) -> Tuple[Optional[Url], Optional[str], Dict[str, Any]]:
+    """Call POST /internal/gateway/session to authenticate and get proxy in one round trip.
+
+    Returns (Url, default_target_url, session_meta_dict).
+    """
+    payload: Dict[str, Any] = {"client_ip": client_ip}
+    if username:
+        payload["username"] = username
+    if password:
+        payload["password"] = password
+
+    meta: Dict[str, Any] = {
+        "tenant_id": None,
+        "credential_id": None,
+        "auth_status": "denied",
+        "status_code": None,
+    }
+
+    try:
+        resp = httpx.post(
+            session_url,
+            json=payload,
             headers={"X-Internal-Key": api_key},
             timeout=API_TIMEOUT,
         )
+        meta["status_code"] = resp.status_code
     except Exception as e:
-        logger.error("Failed to reach backend API: %s", e)
-        return None, None
+        logger.error("Failed to reach backend session API: %s", e)
+        return None, None, meta
+
+    if resp.status_code == 401:
+        meta["auth_status"] = "denied"
+        return None, None, meta
 
     if resp.status_code != 200:
-        logger.warning("Backend returned %d: %s", resp.status_code, resp.text)
-        return None, None
+        logger.warning("Backend session returned %d: %s", resp.status_code, resp.text)
+        if resp.status_code == 404:
+            meta["auth_status"] = "allowed"
+        return None, None, meta
 
     data = resp.json()
-    # Build proxy URL: scheme://[user:pass@]host:port
+    meta["tenant_id"] = data.get("tenant_id")
+    meta["credential_id"] = data.get("credential_id")
+    meta["auth_status"] = "allowed"
+
+    proxy_data = data.get("proxy", {})
     auth = ""
-    if data.get("username") and data.get("password"):
-        auth = f"{data['username']}:{data['password']}@"
-    url_str = f"{data['scheme']}://{auth}{data['host']}:{data['port']}"
-    return Url.from_bytes(bytes_(url_str)), data.get("default_target_url")
+    if proxy_data.get("username") and proxy_data.get("password"):
+        auth = f"{proxy_data['username']}:{proxy_data['password']}@"
+    url_str = f"{proxy_data['scheme']}://{auth}{proxy_data['host']}:{proxy_data['port']}"
+    return Url.from_bytes(bytes_(url_str)), data.get("default_target_url"), meta
 
 
 def send_access_log(payload: Dict[str, Any]) -> None:
@@ -67,22 +129,42 @@ def send_access_log(payload: Dict[str, Any]) -> None:
 
 
 class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
-    """Fetches a random alive proxy from ProxyHub backend for each request."""
+    """Authenticates client via session endpoint and proxies through a tenant proxy."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._endpoint: Optional[Url] = None
         self._default_target: Optional[str] = None
         self._metadata: List[Any] = [None, None, None, None]
+        self._session_meta: Dict[str, Any] = {
+            "tenant_id": None,
+            "credential_id": None,
+            "auth_status": "denied",
+        }
 
     def handle_upstream_data(self, raw: memoryview) -> None:
         self.client.queue(raw)
 
     def before_upstream_connection(self, request: HttpParser) -> Optional[HttpParser]:
-        """Fetch proxy from API and connect to it. Return None to skip default upstream."""
-        self._endpoint, self._default_target = fetch_proxy_from_api(
-            GATEWAY_API_URL, INTERNAL_API_KEY
+        """Authenticate client and resolve proxy via backend session endpoint."""
+        raw_auth = None
+        if request.has_header(b"proxy-authorization"):
+            raw_auth = request.header(b"proxy-authorization")
+        username, password = extract_basic_auth(raw_auth)
+
+        client_ip = "127.0.0.1"
+        if hasattr(self.client, "addr") and self.client.addr:
+            client_ip = str(self.client.addr[0])
+
+        self._endpoint, self._default_target, self._session_meta = create_session_from_api(
+            GATEWAY_SESSION_URL, INTERNAL_API_KEY, client_ip, username, password
         )
+
+        if self._session_meta.get("auth_status") == "denied":
+            self.client.queue(memoryview(build_407_response_bytes()))
+            self._fire_denied_log(request, client_ip)
+            raise HttpProtocolException("Proxy authentication required")
+
         if self._endpoint is None:
             raise HttpProtocolException("No available proxy from ProxyHub backend")
 
@@ -104,14 +186,43 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             )
         return None
 
+    def _fire_denied_log(self, request: HttpParser, client_ip: str) -> None:
+        """Send access log entry for rejected authentication attempt."""
+        host, port = None, None
+        if request.has_header(b"host"):
+            url = Url.from_bytes(request.header(b"host"))
+            if url.hostname:
+                host = url.hostname.decode("utf-8")
+                port = url.port or (443 if request.is_https_tunnel else 80)
+        path = None if not request.path else request.path.decode()
+        method = None if not request.method else request.method.decode()
+
+        threading.Thread(
+            target=send_access_log,
+            args=({
+                "tenant_id": None,
+                "auth_credential_id": None,
+                "auth_status": "denied",
+                "client_ip": client_ip,
+                "method": method,
+                "host": host,
+                "path": path,
+                "proxy_host": None,
+                "proxy_port": None,
+                "response_bytes": len(HTTP_407_RAW),
+            },),
+            daemon=True,
+        ).start()
+
     def handle_client_request(self, request: HttpParser) -> Optional[HttpParser]:
-        """Forward request to upstream proxy, adding Proxy-Authorization if needed."""
+        """Forward request to upstream proxy, stripping client auth and adding upstream auth."""
         if not self.upstream:
             return request
 
-        # If the client sent a direct request without a remote target host
-        # (e.g. browsing directly to gateway :8899),
-        # rewrite to default target from health check settings.
+        # Strip client's Proxy-Authorization so upstream proxy doesn't see client creds
+        if request.has_header(b"proxy-authorization"):
+            request.del_header(b"proxy-authorization")
+
         if (
             self._default_target
             and not request.is_https_tunnel
@@ -131,7 +242,6 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 )
                 request.path = bytes_(self._default_target)
 
-        # Track metadata for access log
         host, port = None, None
         if request.has_header(b"host"):
             url = Url.from_bytes(request.header(b"host"))
@@ -142,7 +252,6 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         method = None if not request.method else request.method.decode()
         self._metadata = [host, port, path, method]
 
-        # Add Proxy-Authorization header if credentials exist
         if self._endpoint and self._endpoint.has_credentials:
             assert self._endpoint.username and self._endpoint.password
             request.add_header(
@@ -156,13 +265,11 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         return request
 
     def handle_client_data(self, raw: memoryview) -> Optional[memoryview]:
-        """Queue client data to upstream proxy."""
         assert self.upstream
         self.upstream.queue(raw)
         return raw
 
     def handle_upstream_chunk(self, chunk: memoryview) -> Optional[memoryview]:
-        """Should never be called since we manage upstream manually."""
         if not self.upstream:
             return chunk
         raise Exception("handle_upstream_chunk should not be called")
@@ -190,10 +297,12 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             self._metadata[3], self._metadata[0], self._metadata[1],
             self._metadata[2] or "", addr, port,
         )
-        # Push to the backend for the realtime log feed (never blocks proxying)
         threading.Thread(
             target=send_access_log,
             args=({
+                "tenant_id": self._session_meta.get("tenant_id"),
+                "auth_credential_id": self._session_meta.get("credential_id"),
+                "auth_status": self._session_meta.get("auth_status", "allowed"),
                 "client_ip": context.get("client_ip"),
                 "method": self._metadata[3],
                 "host": self._metadata[0],

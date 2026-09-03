@@ -8,6 +8,7 @@ import { Toaster } from './components/ui/toast'
 import { TooltipProvider } from './components/ui/tooltip'
 import LoginPage from './pages/LoginPage'
 import LogsPage from './pages/LogsPage'
+import GatewayCredentialsPage from './pages/GatewayCredentialsPage'
 import ProxiesPage from './pages/ProxiesPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
@@ -42,6 +43,7 @@ export default function App() {
                 <Route path="/" element={<ProxiesPage />} />
                 <Route path="/sources" element={<SourcesPage />} />
                 <Route path="/logs" element={<LogsPage />} />
+                <Route path="/credentials" element={<GatewayCredentialsPage />} />
                 <Route path="/tenants" element={<TenantsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />

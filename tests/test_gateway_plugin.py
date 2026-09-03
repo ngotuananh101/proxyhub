@@ -2,54 +2,86 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from app.gateway.plugin import RotateProxyPlugin, fetch_proxy_from_api
+from app.gateway.plugin import (
+    RotateProxyPlugin,
+    build_407_response_bytes,
+    create_session_from_api,
+    extract_basic_auth,
+)
 
 
-class TestFetchProxyFromApi:
-    @patch("app.gateway.plugin.httpx.get")
-    def test_success(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "id": 1, "scheme": "http", "host": "1.2.3.4",
-            "port": 8080, "username": "user", "password": "pass",
-            "default_target_url": "https://api.ipify.org",
-        }
-        mock_get.return_value = mock_resp
+def test_extract_basic_auth():
+    # Basic dXNlcjpwYXNz => user:pass
+    header_val = b"Basic dXNlcjpwYXNz"
+    u, p = extract_basic_auth(header_val)
+    assert u == "user"
+    assert p == "pass"
 
-        result, default_target = fetch_proxy_from_api(
-            "http://localhost:8000/internal/proxies", "key"
+
+def test_extract_basic_auth_invalid():
+    assert extract_basic_auth(b"Bearer xyz") == (None, None)
+    assert extract_basic_auth(b"") == (None, None)
+    assert extract_basic_auth(None) == (None, None)
+
+
+def test_build_407_response_bytes():
+    raw = build_407_response_bytes()
+    assert b"407 Proxy Authentication Required" in raw
+    assert b'Proxy-Authenticate: Basic realm="ProxyHub"' in raw
+
+
+def test_create_session_from_api_success():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "tenant_id": 1,
+        "credential_id": 10,
+        "auth_mode": "basic",
+        "proxy": {
+            "id": 1,
+            "scheme": "http",
+            "host": "5.6.7.8",
+            "port": 8080,
+            "username": "u",
+            "password": "p",
+        },
+        "default_target_url": "https://api.ipify.org",
+    }
+
+    with patch("app.gateway.plugin.httpx.post", return_value=mock_resp):
+        endpoint, default_target, session_meta = create_session_from_api(
+            session_url="http://test/internal/gateway/session",
+            api_key="secret",
+            client_ip="1.2.3.4",
+            username="u",
+            password="p",
         )
-        assert result is not None
-        assert result.hostname == b"1.2.3.4"
-        assert result.port == 8080
-        assert default_target == "https://api.ipify.org"
+        assert endpoint is not None
+        assert endpoint.hostname == b"5.6.7.8"
+        assert endpoint.port == 8080
+        assert session_meta["tenant_id"] == 1
+        assert session_meta["credential_id"] == 10
+        assert session_meta["auth_status"] == "allowed"
 
-    @patch("app.gateway.plugin.httpx.get")
-    def test_no_proxy_available(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-        mock_get.return_value = mock_resp
 
-        result, default_target = fetch_proxy_from_api(
-            "http://localhost:8000/internal/proxies", "key"
+def test_create_session_from_api_401():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_resp.text = "Invalid credentials"
+
+    with patch("app.gateway.plugin.httpx.post", return_value=mock_resp):
+        endpoint, default_target, session_meta = create_session_from_api(
+            session_url="http://test/internal/gateway/session",
+            api_key="secret",
+            client_ip="1.2.3.4",
         )
-        assert result is None
-        assert default_target is None
-
-    @patch("app.gateway.plugin.httpx.get")
-    def test_backend_down(self, mock_get):
-        mock_get.side_effect = Exception("Connection refused")
-        result, default_target = fetch_proxy_from_api(
-            "http://localhost:8000/internal/proxies", "key"
-        )
-        assert result is None
-        assert default_target is None
+        assert endpoint is None
+        assert session_meta["auth_status"] == "denied"
+        assert session_meta["status_code"] == 401
 
 
 class TestAccessLogPayload:
     def _make_plugin(self):
-        # Bypass the real __init__ (needs proxy.py's connection-handler args)
         plugin = RotateProxyPlugin.__new__(RotateProxyPlugin)
         plugin.upstream = MagicMock()
         plugin.upstream.addr = ("34.43.46.91", 80)
@@ -57,10 +89,14 @@ class TestAccessLogPayload:
         plugin._endpoint = None
         plugin._default_target = None
         plugin._metadata = [None, None, None, None]
+        plugin._session_meta = {
+            "tenant_id": 1,
+            "credential_id": 10,
+            "auth_status": "allowed",
+        }
         return plugin
 
     def test_payload_is_json_serializable(self):
-        """proxy.py hands us bytes for method/path; the pushed payload must be str."""
         plugin = self._make_plugin()
         request = MagicMock()
         request.has_header.return_value = True
@@ -81,4 +117,7 @@ class TestAccessLogPayload:
         assert payload["path"] == "/ip"
         assert payload["proxy_host"] == "34.43.46.91"
         assert payload["proxy_port"] == 80
-        json.dumps(payload)  # would raise TypeError if any bytes leaked in
+        assert payload["tenant_id"] == 1
+        assert payload["auth_credential_id"] == 10
+        assert payload["auth_status"] == "allowed"
+        json.dumps(payload)

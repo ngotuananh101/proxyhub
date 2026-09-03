@@ -1,3 +1,4 @@
+from app.models.credential import AuthMode, GatewayCredential
 from app.models.log import RequestLog
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
@@ -14,4 +15,6 @@ __all__ = [
     "RequestLog",
     "Tenant",
     "TenantMembership",
+    "GatewayCredential",
+    "AuthMode",
 ]

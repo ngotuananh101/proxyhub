@@ -268,6 +268,7 @@ export default function LogsPage() {
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
                 <TableRow>
                   <TableHead className="w-48">Time</TableHead>
+                  <TableHead className="w-24">Auth</TableHead>
                   <TableHead className="w-32">Client</TableHead>
                   <TableHead className="w-20">Method</TableHead>
                   <TableHead>Target</TableHead>
@@ -280,6 +281,18 @@ export default function LogsPage() {
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                       {formatDateTime(log.created_at, timezone)}
+                    </TableCell>
+
+                    <TableCell>
+                      {log.auth_status === 'denied' ? (
+                        <Badge variant="destructive">denied</Badge>
+                      ) : log.auth_status === 'allowed' ? (
+                        <Badge variant="outline" className="border-green-600 text-green-600">
+                          allowed
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
 
                     <TableCell className="text-xs">{log.client_ip ?? '—'}</TableCell>

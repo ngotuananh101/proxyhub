@@ -72,3 +72,14 @@ def test_create_db_and_tables_adds_missing_tenant_id_columns():
     with Session(engine) as session:
         res = session.exec(select(ProxySource).where(ProxySource.tenant_id == 1)).all()
         assert res == []
+
+
+def test_auto_patch_gateway_credentials(engine):
+    create_db_and_tables(target_engine=engine)
+
+    inspector = inspect(engine)
+    assert inspector.has_table("gateway_credentials")
+
+    log_cols = {c["name"] for c in inspector.get_columns("requestlogs")}
+    assert "auth_credential_id" in log_cols
+    assert "auth_status" in log_cols
