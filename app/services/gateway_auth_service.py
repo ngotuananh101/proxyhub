@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import hashlib
 import ipaddress
 import logging
@@ -13,8 +14,10 @@ from app.models.credential import AuthMode, GatewayCredential
 
 logger = logging.getLogger(__name__)
 
-# Bcrypt verification LRU cache: (cred_id, sha256(password)) -> timestamp
-_AUTH_CACHE: dict[tuple[int, str], float] = {}
+MAX_CIDRS_PER_CREDENTIAL = 100
+
+# Bcrypt verification LRU cache using OrderedDict for O(1) eviction: (cred_id, sha256(password)) -> timestamp
+_AUTH_CACHE: OrderedDict[tuple[int, str], float] = OrderedDict()
 _CACHE_LOCK = threading.Lock()
 _MAX_CACHE_SIZE = 10_000
 
@@ -39,6 +42,10 @@ def validate_cidrs(cidrs_str: str) -> str:
         entry = raw.strip()
         if not entry:
             continue
+
+        if len(normalized) >= MAX_CIDRS_PER_CREDENTIAL:
+            raise ValueError(f"Too many CIDRs (max {MAX_CIDRS_PER_CREDENTIAL})")
+
         try:
             # Try as network first (e.g. 192.168.1.0/24)
             net = ipaddress.ip_network(entry, strict=False)
@@ -64,6 +71,10 @@ def ip_matches_cidrs(client_ip: str, cidrs_str: str | None) -> bool:
         addr = ipaddress.ip_address(client_ip.strip())
     except ValueError:
         return False
+
+    # Normalize IPv4-mapped IPv6 to IPv4
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
 
     for raw in cidrs_str.split(","):
         entry = raw.strip()
@@ -97,6 +108,7 @@ def verify_credential_password(cred: GatewayCredential, password: str) -> bool:
         with _CACHE_LOCK:
             verified_at = _AUTH_CACHE.get(cache_key)
             if verified_at is not None and (now - verified_at) < ttl:
+                _AUTH_CACHE.move_to_end(cache_key)
                 return True
 
     # Cache miss or expired: perform bcrypt verification
@@ -105,12 +117,11 @@ def verify_credential_password(cred: GatewayCredential, password: str) -> bool:
     if valid and ttl > 0:
         now = time.time()
         with _CACHE_LOCK:
+            # O(1) LRU eviction when cache capacity is reached
             if len(_AUTH_CACHE) >= _MAX_CACHE_SIZE:
-                # Evict oldest 10%
-                sorted_keys = sorted(_AUTH_CACHE.keys(), key=lambda k: _AUTH_CACHE[k])
-                for k in sorted_keys[: _MAX_CACHE_SIZE // 10]:
-                    del _AUTH_CACHE[k]
+                _AUTH_CACHE.popitem(last=False)
             _AUTH_CACHE[cache_key] = now
+            _AUTH_CACHE.move_to_end(cache_key)
 
     return valid
 

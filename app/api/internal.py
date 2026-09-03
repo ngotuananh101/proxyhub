@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from app.api.deps import verify_internal_key
@@ -54,9 +54,9 @@ def get_proxy_for_gateway(
 # --- Combined Gateway Session Endpoint ---
 
 class GatewaySessionRequest(BaseModel):
-    username: str | None = None
-    password: str | None = None
-    client_ip: str
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=255)
+    client_ip: str = Field(..., max_length=45)
 
 
 class GatewaySessionProxy(BaseModel):

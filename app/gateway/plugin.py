@@ -1,5 +1,6 @@
 """RotateProxyPlugin — proxy.py plugin that authenticates clients and fetches a proxy from ProxyHub backend per request."""
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import threading
@@ -24,7 +25,28 @@ GATEWAY_LOG_URL = os.environ.get(
     "GATEWAY_LOG_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/logs"
 )
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
-API_TIMEOUT = 3.0
+API_TIMEOUT = 1.0
+
+_HTTP_CLIENT: Optional[httpx.Client] = None
+_CLIENT_LOCK = threading.Lock()
+_LOG_EXECUTOR = ThreadPoolExecutor(max_workers=10, thread_name_prefix="access_log")
+
+
+def get_http_client() -> httpx.Client:
+    """Return persistent httpx.Client with connection pooling."""
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        with _CLIENT_LOCK:
+            if _HTTP_CLIENT is None:
+                _HTTP_CLIENT = httpx.Client(
+                    timeout=API_TIMEOUT,
+                    limits=httpx.Limits(
+                        max_connections=100,
+                        max_keepalive_connections=20,
+                        keepalive_expiry=30.0,
+                    ),
+                )
+    return _HTTP_CLIENT
 
 HTTP_407_RAW = (
     b"HTTP/1.1 407 Proxy Authentication Required\r\n"
@@ -81,7 +103,8 @@ def create_session_from_api(
     }
 
     try:
-        resp = httpx.post(
+        client = get_http_client()
+        resp = client.post(
             session_url,
             json=payload,
             headers={"X-Internal-Key": api_key},
@@ -118,7 +141,8 @@ def create_session_from_api(
 def send_access_log(payload: Dict[str, Any]) -> None:
     """POST one access-log entry to the backend. Fire-and-forget."""
     try:
-        httpx.post(
+        client = get_http_client()
+        client.post(
             GATEWAY_LOG_URL,
             json=payload,
             headers={"X-Internal-Key": INTERNAL_API_KEY},
@@ -197,9 +221,9 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         path = None if not request.path else request.path.decode()
         method = None if not request.method else request.method.decode()
 
-        threading.Thread(
-            target=send_access_log,
-            args=({
+        _LOG_EXECUTOR.submit(
+            send_access_log,
+            {
                 "tenant_id": None,
                 "auth_credential_id": None,
                 "auth_status": "denied",
@@ -210,9 +234,8 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 "proxy_host": None,
                 "proxy_port": None,
                 "response_bytes": len(HTTP_407_RAW),
-            },),
-            daemon=True,
-        ).start()
+            },
+        )
 
     def handle_client_request(self, request: HttpParser) -> Optional[HttpParser]:
         """Forward request to upstream proxy, stripping client auth and adding upstream auth."""
@@ -297,9 +320,9 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             self._metadata[3], self._metadata[0], self._metadata[1],
             self._metadata[2] or "", addr, port,
         )
-        threading.Thread(
-            target=send_access_log,
-            args=({
+        _LOG_EXECUTOR.submit(
+            send_access_log,
+            {
                 "tenant_id": self._session_meta.get("tenant_id"),
                 "auth_credential_id": self._session_meta.get("credential_id"),
                 "auth_status": self._session_meta.get("auth_status", "allowed"),
@@ -310,7 +333,6 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 "proxy_host": addr,
                 "proxy_port": port,
                 "response_bytes": self.total_size,
-            },),
-            daemon=True,
-        ).start()
+            },
+        )
         return None

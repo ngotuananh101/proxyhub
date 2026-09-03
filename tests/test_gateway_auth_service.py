@@ -31,6 +31,13 @@ def test_validate_cidrs_invalid():
         validate_cidrs("999.999.999.999")
 
 
+def test_validate_cidrs_rejects_exceeding_max_limit():
+    from app.services.gateway_auth_service import MAX_CIDRS_PER_CREDENTIAL
+    too_many = ",".join([f"10.0.{i // 256}.{i % 256}" for i in range(MAX_CIDRS_PER_CREDENTIAL + 10)])
+    with pytest.raises(ValueError, match="Too many CIDRs"):
+        validate_cidrs(too_many)
+
+
 def test_validate_cidrs_empty():
     assert validate_cidrs("") == ""
     assert validate_cidrs("   ") == ""
@@ -45,6 +52,8 @@ def test_ip_matches_cidrs():
     assert ip_matches_cidrs("invalid-ip", cidrs) is False
     assert ip_matches_cidrs("192.168.1.1", None) is False
     assert ip_matches_cidrs("192.168.1.1", "") is False
+    # Test IPv4-mapped IPv6
+    assert ip_matches_cidrs("::ffff:192.168.1.55", cidrs) is True
 
 
 def test_bcrypt_cache_avoids_rehash(engine):

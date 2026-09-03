@@ -33,6 +33,22 @@ def test_session_wrong_internal_key(client):
     assert resp.status_code == 401
 
 
+def test_session_request_rejects_oversized_fields(client):
+    resp = client.post(
+        "/internal/gateway/session",
+        json={"username": "a" * 300, "client_ip": "1.2.3.4"},
+        headers=INTERNAL_HEADERS,
+    )
+    assert resp.status_code == 422
+
+    resp_ip = client.post(
+        "/internal/gateway/session",
+        json={"client_ip": "a" * 60},
+        headers=INTERNAL_HEADERS,
+    )
+    assert resp_ip.status_code == 422
+
+
 def test_session_basic_auth_success(client, engine):
     clear_auth_cache()
     with Session(engine) as session:

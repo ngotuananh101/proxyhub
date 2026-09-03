@@ -30,6 +30,14 @@ def test_build_407_response_bytes():
     assert b'Proxy-Authenticate: Basic realm="ProxyHub"' in raw
 
 
+def test_get_http_client_singleton():
+    from app.gateway.plugin import get_http_client
+    c1 = get_http_client()
+    c2 = get_http_client()
+    assert c1 is c2
+    assert not c1.is_closed
+
+
 def test_create_session_from_api_success():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -48,7 +56,11 @@ def test_create_session_from_api_success():
         "default_target_url": "https://api.ipify.org",
     }
 
-    with patch("app.gateway.plugin.httpx.post", return_value=mock_resp):
+    with patch("app.gateway.plugin.get_http_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+
         endpoint, default_target, session_meta = create_session_from_api(
             session_url="http://test/internal/gateway/session",
             api_key="secret",
@@ -69,7 +81,11 @@ def test_create_session_from_api_401():
     mock_resp.status_code = 401
     mock_resp.text = "Invalid credentials"
 
-    with patch("app.gateway.plugin.httpx.post", return_value=mock_resp):
+    with patch("app.gateway.plugin.get_http_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+
         endpoint, default_target, session_meta = create_session_from_api(
             session_url="http://test/internal/gateway/session",
             api_key="secret",
@@ -108,10 +124,11 @@ class TestAccessLogPayload:
 
         plugin.handle_client_request(request)
 
-        with patch("app.gateway.plugin.threading.Thread") as mock_thread:
+        with patch("app.gateway.plugin._LOG_EXECUTOR.submit") as mock_submit:
             plugin.on_access_log({"client_ip": "127.0.0.1", "client_port": 10902})
 
-        payload = mock_thread.call_args.kwargs["args"][0]
+        assert mock_submit.called
+        payload = mock_submit.call_args[0][1]
         assert payload["method"] == "GET"
         assert payload["host"] == "httpbin.org"
         assert payload["path"] == "/ip"

@@ -1,6 +1,7 @@
 import random
 from urllib.parse import urlparse
 
+import sqlalchemy as sa
 from sqlmodel import Session, col, select
 
 from app.models.proxy import Proxy, ProxyStatus
@@ -72,7 +73,7 @@ def select_random_proxy(session: Session, tenant_id: int | None = None) -> Proxy
     )
     if tenant_id is not None:
         stmt = stmt.where(Proxy.tenant_id == tenant_id)
-    proxies = session.exec(stmt).all()
-    if not proxies:
-        return None
-    return random.choice(proxies)
+
+    # Database-level random sampling avoiding loading entire proxy pool into memory
+    stmt = stmt.order_by(sa.func.random()).limit(1)
+    return session.exec(stmt).first()
