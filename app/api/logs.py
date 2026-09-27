@@ -17,6 +17,8 @@ def _to_response(log: RequestLog) -> RequestLogResponse:
     return RequestLogResponse(
         id=log.id,
         tenant_id=log.tenant_id,
+        auth_credential_id=log.auth_credential_id,
+        auth_status=log.auth_status,
         client_ip=log.client_ip,
         method=log.method,
         host=log.host,

@@ -56,6 +56,8 @@ def _log(
     proxy_host: str = "2.2.2.2",
     proxy_port: int = 8080,
     created_at: datetime | None = None,
+    auth_status: str | None = None,
+    auth_credential_id: int | None = None,
 ):
     return RequestLog(
         method=method,
@@ -65,6 +67,8 @@ def _log(
         proxy_host=proxy_host,
         proxy_port=proxy_port,
         created_at=created_at or datetime.now(timezone.utc),
+        auth_status=auth_status,
+        auth_credential_id=auth_credential_id,
     )
 
 
@@ -93,6 +97,24 @@ class TestListLogs:
         assert data["page"] == 1
         hosts = [log["host"] for log in data["items"]]
         assert hosts == ["h2.example.com", "h1.example.com", "h0.example.com"]
+
+    def test_returns_auth_status_and_credential_id(self, client, auth_headers, engine):
+        _seed_logs(
+            engine,
+            [
+                _log("auth1.example.com", auth_status="allowed", auth_credential_id=12),
+                _log("auth2.example.com", auth_status="denied", auth_credential_id=None),
+            ],
+        )
+
+        resp = client.get("/api/logs", headers=auth_headers)
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        assert items[0]["auth_status"] == "denied"
+        assert items[0]["auth_credential_id"] is None
+        assert items[1]["auth_status"] == "allowed"
+        assert items[1]["auth_credential_id"] == 12
 
     def test_size_and_page_respected(self, client, auth_headers, engine):
         _seed_logs(engine, [_log(f"h{i}.example.com") for i in range(5)])
