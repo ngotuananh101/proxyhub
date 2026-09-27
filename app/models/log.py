@@ -10,7 +10,7 @@ class RequestLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     auth_credential_id: Optional[int] = Field(
-        default=None, foreign_key="gateway_credentials.id", index=True
+        default=None, foreign_key="gateway_credentials.id", ondelete="SET NULL", index=True
     )
     auth_status: Optional[str] = Field(default=None)
     client_ip: Optional[str] = None

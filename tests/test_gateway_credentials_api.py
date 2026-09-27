@@ -4,6 +4,7 @@ from sqlmodel import Session
 
 from app.core.security import create_access_token, hash_password
 from app.models.credential import AuthMode, GatewayCredential
+from app.models.log import RequestLog
 from app.models.tenant import Tenant, TenantMembership, TenantRole
 from app.models.user import User
 
@@ -204,6 +205,40 @@ def test_delete_credential(client, engine):
     # Verify gone from list
     list_resp = client.get("/api/gateway-credentials", headers=headers)
     assert not any(c["id"] == cred_id for c in list_resp.json()["items"])
+
+
+def test_delete_credential_with_existing_logs(client, engine):
+    with Session(engine) as session:
+        user = User(username="admin_del_log", email="adel@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        session.add(user)
+        tenant = Tenant(name="Tenant Del Log", slug="t-del-log")
+        session.add(tenant)
+        session.commit()
+        session.refresh(user)
+        session.refresh(tenant)
+        tenant_id = tenant.id
+        headers = auth_headers(user, tenant_id)
+
+        cred = GatewayCredential(tenant_id=tenant_id, name="to-del-with-logs", auth_mode=AuthMode.BASIC, username="del_log_user")
+        session.add(cred)
+        session.commit()
+        session.refresh(cred)
+
+        log = RequestLog(tenant_id=tenant_id, auth_credential_id=cred.id, client_ip="1.2.3.4")
+        session.add(log)
+        session.commit()
+        session.refresh(log)
+        log_id = log.id
+        cred_id = cred.id
+
+    del_resp = client.delete(f"/api/gateway-credentials/{cred_id}", headers=headers)
+    assert del_resp.status_code == 204
+
+    with Session(engine) as session:
+        assert session.get(GatewayCredential, cred_id) is None
+        rem_log = session.get(RequestLog, log_id)
+        assert rem_log is not None
+        assert rem_log.auth_credential_id is None
 
 
 def test_member_cannot_create_or_delete(client, engine):

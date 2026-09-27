@@ -1,12 +1,13 @@
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, update
 
 from app.api.deps import get_active_tenant_id, get_current_user, require_tenant_role
 from app.core.database import get_session
 from app.core.datetime_utils import utc_isoformat
 from app.core.security import hash_password
 from app.models.credential import AuthMode, GatewayCredential
+from app.models.log import RequestLog
 from app.models.tenant import TenantRole
 from app.models.user import User
 from app.schemas.credential import (
@@ -181,6 +182,12 @@ def delete_credential(
     cred = session.get(GatewayCredential, credential_id)
     if not cred or cred.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Credential not found")
+
+    session.exec(
+        update(RequestLog)
+        .where(RequestLog.auth_credential_id == credential_id)
+        .values(auth_credential_id=None)
+    )
 
     session.delete(cred)
     session.commit()
