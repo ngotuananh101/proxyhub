@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, RotateCcwIcon, SearchIcon } from 'lucide-react'
 import { type DateRange } from 'react-day-picker'
 import { fetchLogs, type LogItem } from '@/api/logs'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useRealtime } from '@/hooks/useRealtime'
+import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useTenant } from '@/lib/tenant'
 import { useTimezone } from '@/hooks/use-timezone'
 import { formatDateTime } from '@/lib/datetime'
@@ -55,6 +56,15 @@ const pageSizeItems = [
   { label: '100', value: '100' },
 ]
 
+const LOGS_FILTERS_KEY = 'proxyhub-logs-filters'
+
+interface StoredLogsFilters {
+  pageSize: number
+  method: string
+  search: string
+  date?: { from?: string; to?: string }
+}
+
 function formatBytes(n: number | null): string {
   if (n === null) return '—'
   if (n < 1024) return `${n} B`
@@ -66,10 +76,42 @@ export default function LogsPage() {
   const timezone = useTimezone()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
-  const [method, setMethod] = useState('all')
-  const [search, setSearch] = useState('')
-  const [date, setDate] = useState<DateRange | undefined>(undefined)
+  const [filters, setFilters] = useLocalStorage<StoredLogsFilters>(LOGS_FILTERS_KEY, {
+    pageSize: 20,
+    method: 'all',
+    search: '',
+    date: undefined,
+  })
+  const { pageSize, method, search } = filters
+
+  const date: DateRange | undefined = useMemo(() => {
+    if (!filters.date?.from) return undefined
+    return {
+      from: new Date(filters.date.from),
+      to: filters.date.to ? new Date(filters.date.to) : undefined,
+    }
+  }, [filters.date])
+
+  const setPageSize = (pageSize: number) => setFilters((prev) => ({ ...prev, pageSize }))
+  const setMethod = (method: string) => setFilters((prev) => ({ ...prev, method }))
+  const setSearch = (search: string) => setFilters((prev) => ({ ...prev, search }))
+  const setDate = (d: DateRange | undefined) => {
+    setFilters((prev) => ({
+      ...prev,
+      date: d?.from ? { from: d.from.toISOString(), to: d.to?.toISOString() } : undefined,
+    }))
+  }
+
+  const isDefaultFilters = search === '' && method === 'all' && !filters.date?.from
+  const handleClearFilters = () => {
+    setFilters((prev) => ({
+      ...prev,
+      search: '',
+      method: 'all',
+      date: undefined,
+    }))
+    setPage(1)
+  }
 
   // Convert the selected day range into UTC ISO instants accepted by the API.
   // A day boundary is inclusive at the start and exclusive at the end, so the
@@ -233,19 +275,15 @@ export default function LogsPage() {
             />
           </PopoverContent>
         </Popover>
-        {date?.from && (
-          <Button
-            variant="ghost"
-            className="text-xs font-bold uppercase tracking-wider"
-            aria-label="Clear date filter"
-            onClick={() => {
-              setDate(undefined)
-              setPage(1)
-            }}
-          >
-            Clear
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          aria-label="Clear filters"
+          disabled={isDefaultFilters}
+          onClick={handleClearFilters}
+        >
+          <RotateCcwIcon data-icon="inline-start" />
+          Clear filters
+        </Button>
       </div>
 
       {isPending || !data ? (

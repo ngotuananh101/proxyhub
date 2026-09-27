@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   PlusIcon,
   RefreshCwIcon,
+  RotateCcwIcon,
   SearchIcon,
   Trash2Icon,
   UploadIcon,
@@ -42,6 +43,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { useRealtime } from '@/hooks/useRealtime'
+import { useLocalStorage } from '@/hooks/use-local-storage'
+
+const PROXIES_FILTERS_KEY = 'proxyhub-proxies-filters'
 
 const statusItems = [
   { label: 'All', value: 'all' },
@@ -59,9 +63,15 @@ const pageSizeItems = [
 
 export default function ProxiesPage() {
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useLocalStorage(PROXIES_FILTERS_KEY, {
+    pageSize: 20,
+    statusFilter: 'all',
+    search: '',
+  })
+  const { pageSize, statusFilter, search } = filters
+  const setPageSize = (pageSize: number) => setFilters((prev) => ({ ...prev, pageSize }))
+  const setStatusFilter = (statusFilter: string) => setFilters((prev) => ({ ...prev, statusFilter }))
+  const setSearch = (search: string) => setFilters((prev) => ({ ...prev, search }))
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showImport, setShowImport] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -240,6 +250,18 @@ export default function ProxiesPage() {
             </SelectGroup>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          aria-label="Clear filters"
+          disabled={search === '' && statusFilter === 'all'}
+          onClick={() => {
+            setFilters((prev) => ({ ...prev, search: '', statusFilter: 'all' }))
+            setPage(1)
+          }}
+        >
+          <RotateCcwIcon data-icon="inline-start" />
+          Clear filters
+        </Button>
       </div>
 
       {isPending || !data ? (
