@@ -263,12 +263,23 @@ def run_services(_args: argparse.Namespace) -> None:
         shutdown()
 
 
-def admin(rest: list[str]) -> None:
+def admin(args: argparse.Namespace) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
-    if rest and rest[0] == "--":
-        rest = rest[1:]
-    run([str(PY), "-m", "app.cli", "create-admin", *rest])
+    # Arguments are declared explicitly (not forwarded verbatim), so a caller
+    # cannot smuggle extra flags into the CLI. Values are passed as a single
+    # `--opt=value` token each, which cannot be re-parsed as a separate flag.
+    cmd = [
+        str(PY),
+        "-m",
+        "app.cli",
+        "create-admin",
+        f"--username={args.username}",
+        f"--password={args.password}",
+    ]
+    if args.email:
+        cmd.append(f"--email={args.email}")
+    run(cmd)
 
 
 def main() -> None:
@@ -276,13 +287,14 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("setup", help="create venv, install deps, create .env files")
     sub.add_parser("run", help="run all dev services in one terminal")
-    sub.add_parser("admin", help="create an admin user", add_help=False)
+    admin_parser = sub.add_parser("admin", help="create an admin user")
+    admin_parser.add_argument("--username", required=True)
+    admin_parser.add_argument("--email")
+    admin_parser.add_argument("--password", required=True)
 
-    args, extra = parser.parse_known_args()
+    args = parser.parse_args()
     if args.command == "admin":
-        admin(extra)
-    elif extra:
-        parser.error(f"unrecognized arguments: {' '.join(extra)}")
+        admin(args)
     elif args.command == "setup":
         setup(args)
     elif args.command == "run":
