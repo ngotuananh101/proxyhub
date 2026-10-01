@@ -63,6 +63,20 @@ def setup(_args: argparse.Namespace) -> None:
     )
 
 
+def _load_env_file(path: Path) -> dict[str, str]:
+    """Minimal KEY=VALUE reader for .env (stdlib only)."""
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
 def _dev_commands() -> list[tuple[str, list[str]]]:
     # Celery needs the threads pool on Windows; the default prefork pool is
     # unsupported there.
@@ -123,11 +137,12 @@ def run_services(_args: argparse.Namespace) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
 
+    env = {**os.environ, **_load_env_file(ROOT / ".env")}
     procs: list[tuple[str, subprocess.Popen]] = []
     for name, cmd in _dev_commands():
         cwd = FRONTEND if name == "frontend" else ROOT
         print(f"+ starting {name}: {' '.join(cmd)}", flush=True)
-        procs.append((name, subprocess.Popen(cmd, cwd=cwd, shell=IS_WINDOWS)))
+        procs.append((name, subprocess.Popen(cmd, cwd=cwd, shell=IS_WINDOWS, env=env)))
 
     stopping = False
 
@@ -162,10 +177,12 @@ def run_services(_args: argparse.Namespace) -> None:
         shutdown()
 
 
-def admin(args: argparse.Namespace) -> None:
+def admin(rest: list[str]) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
-    run([str(PY), "-m", "app.cli", "create-admin", *args.rest])
+    if rest and rest[0] == "--":
+        rest = rest[1:]
+    run([str(PY), "-m", "app.cli", "create-admin", *rest])
 
 
 def main() -> None:
@@ -173,11 +190,17 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("setup", help="create venv, install deps, create .env files")
     sub.add_parser("run", help="run all dev services in one terminal")
-    admin_parser = sub.add_parser("admin", help="create an admin user")
-    admin_parser.add_argument("rest", nargs=argparse.REMAINDER)
+    sub.add_parser("admin", help="create an admin user", add_help=False)
 
-    args = parser.parse_args()
-    {"setup": setup, "run": run_services, "admin": admin}[args.command](args)
+    args, extra = parser.parse_known_args()
+    if args.command == "admin":
+        admin(extra)
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    elif args.command == "setup":
+        setup(args)
+    elif args.command == "run":
+        run_services(args)
 
 
 if __name__ == "__main__":
