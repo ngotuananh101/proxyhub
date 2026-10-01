@@ -31,17 +31,18 @@ def _to_response(log: RequestLog) -> RequestLogResponse:
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
-    """Parse an ISO datetime query param into naive UTC for comparison with the
-    stored UTC timestamps. Returns None for empty/invalid values."""
+    """Parse an ISO datetime query param into an aware UTC datetime for
+    comparison with the stored UTC timestamps. A value without an offset is
+    assumed to be UTC. Returns None for empty/invalid values."""
     if not value:
         return None
     try:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if dt.tzinfo is not None:
-        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @router.get("", response_model=RequestLogListResponse)
