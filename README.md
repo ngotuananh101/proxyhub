@@ -61,7 +61,7 @@ Target features of the project:
 - **🗂️ Pool/group management:** Group proxies by country, ISP, or custom tags.
 - **🐘 PostgreSQL database:** Concurrent-safe storage (no write locks between the API and workers); SQLite is still supported for single-process setups.
 - **🔒 Authentication & security:** JWT login, API token management for clients.
-- **🐳 One-command deployment:** Full **`Docker Compose`** setup orchestrating frontend, backend, worker, beat, gateway, postgres, and redis.
+- **🐳 One-command deployment:** Full **`Docker Compose`** setup orchestrating all 4 services (`app`, `frontend`, `postgres`, `redis`).
 
 ## 🏗️ System Architecture
 
@@ -84,19 +84,19 @@ flowchart LR
 
 ### Service Ports
 
-| Service              | Host Port | Internal Container Port | Notes                                           |
-| -------------------- | --------- | ----------------------- | ----------------------------------------------- |
-| Frontend Dashboard   | 3000      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS    |
-| FastAPI Backend      | Internal  | 8000                    | Proxied via Nginx at `/api`, `/docs`            |
-| proxy.py Gateway     | 8899      | 8899                    | Rotating proxy port for scrapers/clients        |
-| PostgreSQL           | Internal  | 5432                    | Primary database (persistent volume)            |
-| Redis                | Internal  | 6379                    | Broker/backend for Celery                       |
+| Service              | Host Port | Internal Container Port | Notes                                                                |
+| -------------------- | --------- | ----------------------- | -------------------------------------------------------------------- |
+| Frontend Dashboard   | 3000      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS                         |
+| FastAPI Backend      | Internal  | 8000                    | Internal to the `app` container; proxied via Nginx at `/api`, `/docs` |
+| proxy.py Gateway     | 8899      | 8899                    | Rotating proxy port for scrapers/clients; shares the `app` container |
+| PostgreSQL           | Internal  | 5432                    | Primary database (persistent volume)                                 |
+| Redis                | Internal  | 6379                    | Broker/backend for Celery                                            |
 
 ---
 
 ## 🐳 Quick Start with Docker Compose (Recommended)
 
-Docker Compose runs all 7 services (`frontend`, `backend`, `celery_worker`, `celery_beat`, `gateway`, `postgres`, `redis`) with persistent volumes in a single command.
+Docker Compose runs all 4 services (`app`, `frontend`, `postgres`, `redis`) with persistent volumes in a single command. The `app` container runs the API, the Celery worker and beat, and the proxy gateway together under supervisor.
 
 ### 1. Clone repository & create `.env`
 
@@ -108,7 +108,7 @@ cp .env.example .env
 
 Edit `.env` to set your own secure secrets:
 ```env
-SECRET_KEY=your_generated_secret_key
+APP_KEY=your_generated_secret_key
 INTERNAL_API_KEY=your_internal_gateway_key
 ```
 
@@ -121,7 +121,7 @@ docker compose up -d --build
 ### 3. Create your initial Admin account
 
 ```bash
-docker compose run --rm backend python -m app.cli create-admin --username admin --email admin@example.com --password YourStrongPassword
+docker compose run --rm app python -m app.cli create-admin --username admin --email admin@example.com --password YourStrongPassword
 ```
 
 ### 4. Access ProxyHub
@@ -133,7 +133,7 @@ docker compose run --rm backend python -m app.cli create-admin --username admin 
 ### Useful Docker Compose commands
 
 - **View live logs:** `docker compose logs -f`
-- **View specific service logs:** `docker compose logs -f gateway` or `docker compose logs -f celery_worker`
+- **View specific service logs:** `docker compose logs -f app` (API + worker + beat + gateway) or `docker compose logs -f frontend`
 - **Restart services:** `docker compose restart`
 - **Stop all services:** `docker compose down`
 - **Stop and remove volumes:** `docker compose down -v`
@@ -142,58 +142,31 @@ docker compose run --rm backend python -m app.cli create-admin --username admin 
 
 ## 💻 Manual Local Development
 
-If you prefer developing without Docker:
-
 ### Prerequisites
 - [**Python**](https://www.python.org/downloads/) >= 3.10
 - [**Node.js**](https://nodejs.org/) >= 18.x
 - [**PostgreSQL**](https://www.postgresql.org/download/) >= 14 running locally (create a database, e.g. `proxyhub`)
 - [**Redis**](https://redis.io/docs/getting-started/installation/) running at `localhost:6379`
 
-### 1. Backend Setup
+### One-command setup (Linux, macOS, Windows)
 
 ```bash
-python -m venv venv
-# Linux/macOS: source venv/bin/activate
-# Windows: .\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cp .env.example .env
+python dev.py setup   # venv + pip install + .env files + npm install
+python dev.py run     # API + frontend + gateway + Celery worker + beat
 ```
 
-Run API Server:
+`dev.py run` starts all five processes in one terminal; `Ctrl+C` stops them all.
+Create the first admin account with `python dev.py admin --username admin --email admin@example.com --password <password>`.
+
+### Running services individually
+
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Run Celery Worker:
-```bash
-# Linux/macOS:
-celery -A app.worker.celery_app worker --loglevel=info
-# Windows:
-celery -A app.worker.celery_app worker --loglevel=info --pool=threads --concurrency=8
-```
-
-Run Celery Beat:
-```bash
+celery -A app.worker.celery_app worker --loglevel=info   # Windows: add --pool=threads
 celery -A app.worker.celery_app beat --loglevel=info
-```
-
-### 2. Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Dashboard runs at `http://localhost:5173`.
-
-### 3. Gateway Setup
-
-```bash
 python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.0.1 --port 8899
+cd frontend && npm run dev
 ```
-
-> 💡 **Tip:** Run `start-dev.bat` on Windows to launch all 5 dev services in a single terminal with `npx concurrently`.
 
 ---
 
@@ -202,44 +175,89 @@ python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 127.0.
 The **`.env`** file contains configuration values:
 
 ```env
+############################################
+# ProxyHub
+############################################
+
+APP_NAME=ProxyHub
+APP_ENV=local
+APP_KEY=change_me_to_a_random_secure_secret_key
+APP_PORT=8000
+
+#--------------------------------------------------
 # Database (PostgreSQL)
-# Local: postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/proxyhub
-# Docker Compose: postgresql+psycopg://proxyhub:proxyhub@postgres:5432/proxyhub (auto-configured in docker-compose.yml)
+#--------------------------------------------------
+# Local:  postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/proxyhub
+# Docker: auto-configured in docker-compose.yml from DB_USERNAME/DB_PASSWORD/DB_DATABASE
 # SQLite still works for single-process setups: sqlite:///./proxyhub.db
-DATABASE_URL=postgresql+psycopg://proxyhub:proxyhub@127.0.0.1:5432/proxyhub
+DB_CONNECTION=postgresql
+DB_URL=postgresql+psycopg://proxyhub:proxyhub@127.0.0.1:5432/proxyhub
+DB_USERNAME=proxyhub
+DB_PASSWORD=change_me_to_a_strong_password
+DB_DATABASE=proxyhub
 
-# Redis (for Celery)
-REDIS_URL=redis://127.0.0.1:6379/0
+#--------------------------------------------------
+# Queue (Celery / Redis)
+#--------------------------------------------------
+QUEUE_BROKER_URL=redis://127.0.0.1:6379/1
+QUEUE_RESULT_BACKEND=redis://127.0.0.1:6379/2
 
-# JWT Auth
-SECRET_KEY=your_super_secret_key_change_me
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
+#--------------------------------------------------
+# Auth (JWT)
+#--------------------------------------------------
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_TTL=1440
+INTERNAL_API_KEY=change_me_to_a_random_internal_api_key
 
-# Internal Gateway Security Key
-INTERNAL_API_KEY=change_me_internal_key
+#--------------------------------------------------
+# Gateway
+#--------------------------------------------------
+GATEWAY_API_URL=http://localhost:8000/internal/proxies
+GATEWAY_SESSION_URL=http://localhost:8000/internal/gateway/session
+GATEWAY_LOG_URL=http://localhost:8000/internal/logs
+GATEWAY_AUTH_CACHE_TTL=60.0
+GATEWAY_PORT=8899
 
-# Celery Configuration
-CELERY_BROKER_URL=redis://127.0.0.1:6379/1
-CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/2
-
-# Health Check Settings (Seeded to database on first startup)
+#--------------------------------------------------
+# Runtime settings (seeded to the DB on first boot, editable in the dashboard)
+#--------------------------------------------------
 HEALTH_CHECK_URL=https://api.ipify.org
 HEALTH_CHECK_TIMEOUT=6
 HEALTH_CHECK_INTERVAL=300
 HEALTH_CHECK_CONCURRENCY=50
+REQUEST_LOG_RETENTION_DAYS=30
 
-# Gateway Configuration
-GATEWAY_API_URL=http://localhost:8000/internal/proxies
-GATEWAY_LOG_URL=http://localhost:8000/internal/logs
-
-# CORS Configuration
+#--------------------------------------------------
+# CORS
+#--------------------------------------------------
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost
 
-# Docker Port Mappings (Optional overrides)
-PORT=3000
-GATEWAY_PORT=8899
+#--------------------------------------------------
+# Frontend (Vite: dev server + Docker build args)
+#--------------------------------------------------
+# Leave empty in Docker to use same-origin (Nginx proxies /api and /ws).
+VITE_API_URL=
+VITE_WS_URL=
+# Host port for the dashboard container.
+FRONTEND_PORT=3000
 ```
+
+### Renamed variables (breaking change)
+
+| Old | New |
+| --- | --- |
+| `SECRET_KEY` | `APP_KEY` |
+| `ALGORITHM` | `JWT_ALGORITHM` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `JWT_ACCESS_TOKEN_TTL` |
+| `DATABASE_URL` | `DB_URL` |
+| `POSTGRES_USER` | `DB_USERNAME` |
+| `POSTGRES_PASSWORD` | `DB_PASSWORD` |
+| `POSTGRES_DB` | `DB_DATABASE` |
+| `CELERY_BROKER_URL` | `QUEUE_BROKER_URL` |
+| `CELERY_RESULT_BACKEND` | `QUEUE_RESULT_BACKEND` |
+| `PORT` | `FRONTEND_PORT` |
+
+`REDIS_URL` was removed (it was unused). `APP_PORT` was added for the API host port.
 
 ---
 
@@ -247,12 +265,12 @@ GATEWAY_PORT=8899
 
 In Docker:
 ```bash
-docker compose run --rm backend python -m app.cli create-admin --username admin --email admin@example.com --password <your-password>
+docker compose run --rm app python -m app.cli create-admin --username admin --email admin@example.com --password <your-password>
 ```
 
 In Local Dev:
 ```bash
-python -m app.cli create-admin --username admin --email admin@example.com --password <your-password>
+python dev.py admin --username admin --email admin@example.com --password <your-password>
 ```
 
 ---
@@ -322,7 +340,7 @@ The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`*
 If you have an existing `proxyhub.db` from a previous SQLite setup, a one-shot script copies all data (users, settings, proxies, sources, request logs) into PostgreSQL:
 
 1. Stop the app so the SQLite file is not being written to.
-2. Point `DATABASE_URL` in `.env` at your PostgreSQL database.
+2. Point `DB_URL` in `.env` at your PostgreSQL database.
 3. Run the migration:
 
 ```bash
@@ -331,18 +349,18 @@ python -m scripts.migrate_sqlite_to_postgres ./proxyhub.db
 
 # Docker Compose (copy proxyhub.db next to docker-compose.yml first)
 docker compose run --rm -v $(pwd)/proxyhub.db:/tmp/proxyhub.db \
-  backend python -m scripts.migrate_sqlite_to_postgres /tmp/proxyhub.db
+  app python -m scripts.migrate_sqlite_to_postgres /tmp/proxyhub.db
 ```
 
-The script is idempotent — tables that already contain rows are skipped, so it is safe to re-run. The original `proxyhub.db` is only read, never modified; you can switch back at any time by setting `DATABASE_URL` to the SQLite path.
+The script is idempotent — tables that already contain rows are skipped, so it is safe to re-run. The original `proxyhub.db` is only read, never modified; you can switch back at any time by setting `DB_URL` to the SQLite path.
 
 ---
 
 ## 🔒 Security Notes
 
-- **Bind to localhost during development:** In local dev, bind to `127.0.0.1`. In Docker, only expose necessary host ports (`PORT:80` and `GATEWAY_PORT:8899`).
+- **Bind to localhost during development:** In local dev, bind to `127.0.0.1`. In Docker, only expose necessary host ports (`FRONTEND_PORT:80` and `GATEWAY_PORT:8899`).
 - **Internal API key:** The `/internal/proxies` endpoint returns proxy URLs including credentials, protected by `INTERNAL_API_KEY` (`X-Internal-Key`).
-- **Change `SECRET_KEY`:** Always generate a random `SECRET_KEY`; never use the default value in production.
+- **Change `APP_KEY`:** Always generate a random `APP_KEY`; never use the default value in production.
 
 ---
 
@@ -352,10 +370,10 @@ The script is idempotent — tables that already contain rows are skipped, so it
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Celery worker crashes on Windows              | Celery does not support Windows with the default pool. Use Docker Compose (recommended) or `--pool=threads`.               |
 | `ConnectionError: redis://127.0.0.1:6379`     | Redis is not running. Start Redis (`redis-server`) or verify container `proxyhub-redis` is running.                         |
-| `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or `DATABASE_URL` is wrong. In Docker, verify container `proxyhub-postgres` is healthy.      |
-| Port 3000 or 8899 already in use              | Port conflict on host. Change `PORT` or `GATEWAY_PORT` in `.env`.                                                           |
+| `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or `DB_URL` is wrong. In Docker, verify container `proxyhub-postgres` is healthy.                 |
+| Port 3000 or 8899 already in use              | Port conflict on host. Change `FRONTEND_PORT` or `GATEWAY_PORT` in `.env`.                                                   |
 | `database is locked` (SQLite only)            | Only relevant if you kept SQLite. FastAPI and Celery write concurrently; WAL mode and `busy_timeout` are enabled by default. Switching to PostgreSQL removes this class of error. |
-| Gateway errors but Dashboard still shows proxies alive | Health check hasn't completed a cycle yet. Check worker logs (`docker compose logs -f celery_worker`) or click "Check now". |
+| Gateway errors but Dashboard still shows proxies alive | Health check hasn't completed a cycle yet. Check app logs (`docker compose logs -f app`) or click "Check now".             |
 
 ---
 
