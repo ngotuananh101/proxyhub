@@ -31,9 +31,22 @@ def _venv_script(name: str) -> str:
     return str(VENV_BIN / f"{name}{suffix}")
 
 
+def _command(name: str, *args: str) -> list[str]:
+    """Build an argv for a bare executable name, safe for ``shell=False``.
+
+    On Windows ``npm`` resolves to ``npm.cmd``, which ``CreateProcess`` cannot
+    launch directly, so it is routed through ``cmd.exe``. Every other command
+    here uses an absolute path, so no shell is needed on either platform.
+    """
+    exe = shutil.which(name) or name
+    if IS_WINDOWS and exe.lower().endswith((".cmd", ".bat")):
+        return ["cmd", "/c", exe, *args]
+    return [exe, *args]
+
+
 def run(cmd: list[str], cwd: Path = ROOT) -> None:
     print("$", " ".join(str(c) for c in cmd), flush=True)
-    subprocess.run(cmd, check=True, cwd=cwd, shell=IS_WINDOWS)
+    subprocess.run(cmd, check=True, cwd=cwd)
 
 
 def ensure_env_file(src: Path, dst: Path) -> None:
@@ -57,7 +70,7 @@ def setup(_args: argparse.Namespace) -> None:
     if (FRONTEND / "node_modules").exists():
         print("= frontend/node_modules already present")
     else:
-        run(["npm", "install"], cwd=FRONTEND)
+        run(_command("npm", "install"), cwd=FRONTEND)
     print(
         "\nSetup done. Before production use, edit .env (APP_KEY, INTERNAL_API_KEY, DB_PASSWORD)."
     )
@@ -107,7 +120,7 @@ def _dev_commands() -> list[tuple[str, list[str]]]:
                 "8000",
             ],
         ),
-        ("frontend", ["npm", "run", "dev"]),
+        ("frontend", _command("npm", "run", "dev")),
         (
             "gateway",
             [
@@ -182,33 +195,41 @@ def _kill_tree_force(proc: subprocess.Popen) -> None:
         pass
 
 
+def _spawn(name: str, cmd: list[str], python_env: dict[str, str]) -> subprocess.Popen:
+    """Start one dev process with the environment it needs.
+
+    The frontend child gets only the ambient environment so `npm run dev`
+    reads frontend/.env (see _python_env); the Python children get the root
+    .env layered in.
+    """
+    if name == "frontend":
+        cwd, env = FRONTEND, dict(os.environ)
+    else:
+        cwd, env = ROOT, python_env
+    print(f"+ starting {name}: {' '.join(cmd)}", flush=True)
+    return subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        start_new_session=not IS_WINDOWS,
+    )
+
+
+def _first_exit(procs: list[tuple[str, subprocess.Popen]]) -> tuple[str, int] | None:
+    """Return (name, exit code) of the first process that has exited, if any."""
+    for name, proc in procs:
+        code = proc.poll()
+        if code is not None:
+            return name, code
+    return None
+
+
 def run_services(_args: argparse.Namespace) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
 
     python_env = _python_env()
-    procs: list[tuple[str, subprocess.Popen]] = []
-    for name, cmd in _dev_commands():
-        if name == "frontend":
-            cwd = FRONTEND
-            # Let `npm run dev` read frontend/.env; do not inject root .env.
-            env = dict(os.environ)
-        else:
-            cwd = ROOT
-            env = python_env
-        print(f"+ starting {name}: {' '.join(cmd)}", flush=True)
-        procs.append(
-            (
-                name,
-                subprocess.Popen(
-                    cmd,
-                    cwd=cwd,
-                    shell=IS_WINDOWS,
-                    env=env,
-                    start_new_session=not IS_WINDOWS,
-                ),
-            )
-        )
+    procs = [(name, _spawn(name, cmd, python_env)) for name, cmd in _dev_commands()]
 
     stopping = False
 
@@ -232,11 +253,11 @@ def run_services(_args: argparse.Namespace) -> None:
 
     try:
         while True:
-            for name, proc in procs:
-                code = proc.poll()
-                if code is not None:
-                    print(f"! {name} exited with code {code}; stopping the rest")
-                    shutdown()
+            exited = _first_exit(procs)
+            if exited is not None:
+                name, code = exited
+                print(f"! {name} exited with code {code}; stopping the rest")
+                shutdown()
             time.sleep(0.5)
     except KeyboardInterrupt:
         shutdown()
