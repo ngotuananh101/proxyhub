@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { createSource, updateSource, type SourceItem } from '@/api/sources'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -34,8 +34,13 @@ export function SourceDialog({ open, onOpenChange, onSaved, source }: Props) {
   const [enabled, setEnabled] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [prevOpen, setPrevOpen] = useState(open)
 
-  useEffect(() => {
+  // Seed the form when the dialog opens. Adjusting state during render
+  // (instead of an effect) is React's documented pattern for this and avoids
+  // a wasted render pass with stale values.
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       setName(source?.name ?? '')
       setUrl(source?.url ?? '')
@@ -43,7 +48,7 @@ export function SourceDialog({ open, onOpenChange, onSaved, source }: Props) {
       setEnabled(source?.enabled ?? true)
       setError('')
     }
-  }, [open, source])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, Settings2Icon } from 'lucide-react'
-import { useTenant } from '@/lib/tenant'
+import { useTenant } from '@/lib/tenant-context'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

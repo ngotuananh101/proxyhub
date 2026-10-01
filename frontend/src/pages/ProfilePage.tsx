@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { changePassword, getMe, updateMe } from '@/api/auth'
 import { Badge } from '@/components/ui/badge'
@@ -35,13 +35,18 @@ function ProfileForm() {
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prevUser, setPrevUser] = useState(user)
 
-  useEffect(() => {
+  // Seed the form once the user loads. Adjusting state during render (instead
+  // of an effect) is React's documented pattern for this and avoids a wasted
+  // render pass with empty values.
+  if (user !== prevUser) {
+    setPrevUser(user)
     if (user) {
       setUsername(user.username)
       setEmail(user.email ?? '')
     }
-  }, [user])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

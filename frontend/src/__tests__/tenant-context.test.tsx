@@ -1,7 +1,8 @@
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { TenantProvider, useTenant } from '../lib/tenant'
+import { TenantProvider } from '../lib/tenant'
+import { useTenant } from '../lib/tenant-context'
 import * as tenantsApi from '../api/tenants'
 import * as authApi from '../api/auth'
 

@@ -17,7 +17,6 @@ import {
   fetchProxies,
   triggerCheckAll,
   type ProxyItem,
-  type StatsSummary,
 } from '@/api/proxies'
 import { AddProxyDialog } from '@/components/proxies/AddProxyDialog'
 import { EditProxyDialog } from '@/components/proxies/EditProxyDialog'

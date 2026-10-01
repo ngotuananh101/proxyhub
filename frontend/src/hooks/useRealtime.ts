@@ -83,7 +83,10 @@ function subscribe(listener: Listener) {
  */
 export function useRealtime(onEvent: Listener) {
   const handlerRef = useRef(onEvent)
-  handlerRef.current = onEvent
+
+  useEffect(() => {
+    handlerRef.current = onEvent
+  }, [onEvent])
 
   useEffect(() => subscribe((event) => handlerRef.current(event)), [])
 }

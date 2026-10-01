@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchSettings, updateSettings, type SettingItem } from '@/api/settings'
 import { Button } from '@/components/ui/button'
@@ -53,11 +53,16 @@ function GeneralSettingsForm({ item }: { item: SettingItem }) {
   const [value, setValue] = useState(String(item.value))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prevValue, setPrevValue] = useState(item.value)
   const timezones = useMemo(() => listTimezones(), [])
 
-  useEffect(() => {
+  // Reseed when the server value changes (e.g. after a refetch). Adjusting
+  // state during render is React's documented pattern for this and avoids a
+  // wasted render pass.
+  if (item.value !== prevValue) {
+    setPrevValue(item.value)
     setValue(String(item.value))
-  }, [item.value])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -143,10 +148,15 @@ function SourceSettingsForm({ items }: { items: SettingItem[] }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prevItems, setPrevItems] = useState(items)
 
-  useEffect(() => {
+  // Reseed when the server values change. Adjusting state during render is
+  // React's documented pattern for this; the parent memoizes `items` so the
+  // reference only changes when the data actually changes.
+  if (items !== prevItems) {
+    setPrevItems(items)
     setValues(Object.fromEntries(items.map((item) => [item.key, String(item.value)])))
-  }, [items])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -215,10 +225,15 @@ function HealthCheckSettingsForm({ items }: { items: SettingItem[] }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prevItems, setPrevItems] = useState(items)
 
-  useEffect(() => {
+  // Reseed when the server values change. Adjusting state during render is
+  // React's documented pattern for this; the parent memoizes `items` so the
+  // reference only changes when the data actually changes.
+  if (items !== prevItems) {
+    setPrevItems(items)
     setValues(Object.fromEntries(items.map((item) => [item.key, String(item.value)])))
-  }, [items])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -289,10 +304,20 @@ export default function SettingsPage() {
     queryFn: fetchSettings,
   })
 
-  const timezoneItem = data?.items.find((item) => item.key === TIMEZONE_KEY)
-  const sourceItems = data?.items.filter((item) => SOURCE_KEYS.has(item.key))
-  const healthCheckItems = data?.items.filter(
-    (item) => item.key !== TIMEZONE_KEY && !SOURCE_KEYS.has(item.key)
+  const timezoneItem = useMemo(
+    () => data?.items.find((item) => item.key === TIMEZONE_KEY),
+    [data]
+  )
+  const sourceItems = useMemo(
+    () => data?.items.filter((item) => SOURCE_KEYS.has(item.key)),
+    [data]
+  )
+  const healthCheckItems = useMemo(
+    () =>
+      data?.items.filter(
+        (item) => item.key !== TIMEZONE_KEY && !SOURCE_KEYS.has(item.key)
+      ),
+    [data]
   )
 
   return (

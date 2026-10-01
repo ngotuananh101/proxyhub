@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ProxyItem } from '@/api/proxies'
 import { updateProxy } from '@/api/proxies'
 import { Button } from '@/components/ui/button'
@@ -54,8 +54,13 @@ export function EditProxyDialog({ proxy, onOpenChange, onUpdated }: Props) {
   const [status, setStatus] = useState('unknown')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [prevProxy, setPrevProxy] = useState(proxy)
 
-  useEffect(() => {
+  // Reset the form when a different proxy is opened. Adjusting state during
+  // render (instead of an effect) is React's documented pattern for this and
+  // avoids a wasted render pass with stale values.
+  if (proxy !== prevProxy) {
+    setPrevProxy(proxy)
     if (proxy) {
       setScheme(proxy.scheme)
       setHost(proxy.host)
@@ -65,7 +70,7 @@ export function EditProxyDialog({ proxy, onOpenChange, onUpdated }: Props) {
       setStatus(proxy.status)
       setError('')
     }
-  }, [proxy])
+  }
 
   const handleOpenChange = (next: boolean) => {
     if (!next) setError('')

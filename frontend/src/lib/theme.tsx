@@ -1,16 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-
-export type Theme = 'light' | 'dark' | 'system'
-
-interface ThemeContextValue {
-  theme: Theme
-  resolvedTheme: 'light' | 'dark'
-  setTheme: (theme: Theme) => void
-}
-
-export const THEME_STORAGE_KEY = 'proxyhub-theme'
-
-const ThemeContext = createContext<ThemeContextValue | null>(null)
+import { useEffect, useState } from 'react'
+import {
+  THEME_STORAGE_KEY,
+  ThemeContext,
+  type Theme,
+} from './theme-context'
 
 function systemTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -55,12 +48,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ThemeContext.Provider>
   )
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext)
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider')
-  }
-  return context
 }

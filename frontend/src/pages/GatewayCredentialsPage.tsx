@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table'
 import { CreateCredentialDialog } from '@/components/credentials/CreateCredentialDialog'
 import { OneTimePasswordDialog } from '@/components/credentials/OneTimePasswordDialog'
-import { useTenant } from '@/lib/tenant'
+import { useTenant } from '@/lib/tenant-context'
 import { toast } from '@/components/ui/toast'
 
 export default function GatewayCredentialsPage() {

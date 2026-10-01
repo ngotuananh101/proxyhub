@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import { TenantSwitcher } from '../components/layout/TenantSwitcher'
-import * as tenantLib from '../lib/tenant'
+import * as tenantLib from '../lib/tenant-context'
 
 const mockTenants = [
   { id: 1, name: 'Default', slug: 'default', created_at: '2026-01-01T00:00:00' },

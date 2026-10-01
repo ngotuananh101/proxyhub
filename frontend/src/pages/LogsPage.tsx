@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/table'
 import { useRealtime } from '@/hooks/useRealtime'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import { useTenant } from '@/lib/tenant'
+import { useTenant } from '@/lib/tenant-context'
 import { useTimezone } from '@/hooks/use-timezone'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -133,7 +133,9 @@ export default function LogsPage() {
   // Live logs are only prepended in-place on the latest, unfiltered view.
   // Filtered or older pages simply refetch when new logs arrive.
   const liveRef = useRef(true)
-  liveRef.current = page === 1 && method === 'all' && !search && !start && !end
+  useEffect(() => {
+    liveRef.current = page === 1 && method === 'all' && !search && !start && !end
+  }, [page, method, search, start, end])
 
   const { data, isPending } = useQuery({
     queryKey: ['logs', { page, pageSize, method, search, start, end }],
@@ -148,10 +150,15 @@ export default function LogsPage() {
       }),
   })
   const [rows, setRows] = useState<LogItem[]>([])
+  const [prevData, setPrevData] = useState(data)
 
-  useEffect(() => {
+  // Reseed the visible rows whenever a new page/filter result arrives.
+  // Adjusting state during render is React's documented pattern for this and
+  // avoids a wasted render pass with stale rows.
+  if (data !== prevData) {
+    setPrevData(data)
     if (data) setRows(data.items)
-  }, [data])
+  }
 
   // Buffer log events arriving in the same tick and prepend them in one flush,
   // so a burst of requests causes one render instead of one per event.
@@ -160,7 +167,9 @@ export default function LogsPage() {
 
   const { activeTenant } = useTenant()
   const activeTenantIdRef = useRef<number | null>(null)
-  activeTenantIdRef.current = activeTenant?.id ?? null
+  useEffect(() => {
+    activeTenantIdRef.current = activeTenant?.id ?? null
+  }, [activeTenant])
 
   useRealtime((event) => {
     if (event.topic !== 'logs') return
