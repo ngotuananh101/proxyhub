@@ -3,8 +3,8 @@
 Each entry defines the type, bounds, and env-derived default for one key
 stored in the `appsettings` table. Adding a new editable setting only
 requires a new entry here — the API, validation, and the Settings page
-pick it up automatically. Infra/security values (DATABASE_URL, SECRET_KEY,
-CELERY_*, INTERNAL_API_KEY, CORS_ORIGINS) are intentionally excluded:
+pick it up automatically. Infra/security values (DB_URL, APP_KEY,
+QUEUE_*, INTERNAL_API_KEY, CORS_ORIGINS) are intentionally excluded:
 they require a restart and must stay in .env.
 """
 

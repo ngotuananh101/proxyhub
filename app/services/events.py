@@ -53,7 +53,7 @@ _publish_client: Redis | None = None
 def _get_publish_client() -> Redis:
     global _publish_client
     if _publish_client is None:
-        _publish_client = Redis.from_url(settings.CELERY_BROKER_URL)
+        _publish_client = Redis.from_url(settings.QUEUE_BROKER_URL)
     return _publish_client
 
 
@@ -79,7 +79,7 @@ async def relay_events() -> None:
     while True:
         client = None
         try:
-            client = aioredis.from_url(settings.CELERY_BROKER_URL)
+            client = aioredis.from_url(settings.QUEUE_BROKER_URL)
             pubsub = client.pubsub()
             await pubsub.subscribe(CHANNEL)
             backoff = 1.0

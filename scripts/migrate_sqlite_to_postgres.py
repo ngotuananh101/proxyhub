@@ -4,7 +4,7 @@ Usage (stop the app first so the SQLite file is not being written to):
 
     venv\\Scripts\\python -m scripts.migrate_sqlite_to_postgres [path/to/proxyhub.db]
 
-DATABASE_URL must point at PostgreSQL (taken from the environment / .env).
+DB_URL must point at PostgreSQL (taken from the environment / .env).
 Tables are created if missing; a table that already has rows is skipped,
 so the script is safe to re-run.
 """
@@ -80,12 +80,12 @@ def migrate(sqlite_url: str, pg_url: str) -> None:
 def main() -> None:
     from app.core.config import settings
 
-    if settings.DATABASE_URL.startswith("sqlite"):
-        sys.exit("DATABASE_URL still points at SQLite; set it to a PostgreSQL URL first.")
+    if settings.DB_URL.startswith("sqlite"):
+        sys.exit("DB_URL still points at SQLite; set it to a PostgreSQL URL first.")
 
     sqlite_path = sys.argv[1] if len(sys.argv) > 1 else "./proxyhub.db"
-    print(f"Migrating {sqlite_path} -> {settings.DATABASE_URL.split('@')[-1]}")
-    migrate(f"sqlite:///{sqlite_path}", settings.DATABASE_URL)
+    print(f"Migrating {sqlite_path} -> {settings.DB_URL.split('@')[-1]}")
+    migrate(f"sqlite:///{sqlite_path}", settings.DB_URL)
 
 
 if __name__ == "__main__":

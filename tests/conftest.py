@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-proxyhub-0123456789")
+os.environ.setdefault("DB_URL", "sqlite:///./test.db")
+os.environ.setdefault("APP_KEY", "test-secret-key-for-proxyhub-0123456789")
 os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key")
 
 # Import models so SQLModel.metadata knows about them before create_all
