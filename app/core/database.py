@@ -7,7 +7,7 @@ from app.core.config import settings
 connect_args = {}
 engine_kwargs = {}
 
-if settings.DATABASE_URL.startswith("sqlite"):
+if settings.DB_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 else:
     engine_kwargs.update({
@@ -18,12 +18,12 @@ else:
         "pool_recycle": 3600,
     })
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args, **engine_kwargs)
+engine = create_engine(settings.DB_URL, connect_args=connect_args, **engine_kwargs)
 
 
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_connection, connection_record):
-    if not settings.DATABASE_URL.startswith("sqlite"):
+    if not settings.DB_URL.startswith("sqlite"):
         return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")

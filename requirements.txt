@@ -14,3 +14,4 @@ redis>=5.0.0
 tzdata>=2024.1
 psycopg[binary]>=3.2.0
 alembic>=1.13.0
+supervisor>=4.2.5

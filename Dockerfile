@@ -23,6 +23,9 @@ COPY alembic/ ./alembic/
 COPY app/ ./app/
 COPY scripts/ ./scripts/
 
+# One container runs api + worker + beat + gateway under supervisor.
+COPY deploy/supervisor.conf /etc/supervisor/conf.d/proxyhub.conf
+
 EXPOSE 8000 8899
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/proxyhub.conf"]

@@ -2,14 +2,14 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./proxyhub.db"
-    SECRET_KEY: str = "change_me"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    DB_URL: str = "sqlite:///./proxyhub.db"
+    APP_KEY: str = "change_me"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_TTL: int = 1440
     INTERNAL_API_KEY: str = "change_me"
     CORS_ORIGINS: str = "http://localhost:5173"
-    CELERY_BROKER_URL: str = "redis://127.0.0.1:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://127.0.0.1:6379/2"
+    QUEUE_BROKER_URL: str = "redis://127.0.0.1:6379/1"
+    QUEUE_RESULT_BACKEND: str = "redis://127.0.0.1:6379/2"
     HEALTH_CHECK_URL: str = "https://api.ipify.org"
     HEALTH_CHECK_TIMEOUT: float = 6.0
     HEALTH_CHECK_INTERVAL: float = 300.0
@@ -34,12 +34,12 @@ def validate_secrets(s: Settings) -> None:
     """Fail fast if auth secrets are still placeholder values.
 
     Called at server/worker startup so a deployment that forgot to set
-    SECRET_KEY or INTERNAL_API_KEY cannot silently run with values
+    APP_KEY or INTERNAL_API_KEY cannot silently run with values
     anyone can guess.
     """
     unset = [
         name
-        for name in ("SECRET_KEY", "INTERNAL_API_KEY")
+        for name in ("APP_KEY", "INTERNAL_API_KEY")
         if getattr(s, name) in INSECURE_PLACEHOLDERS
     ]
     if unset:

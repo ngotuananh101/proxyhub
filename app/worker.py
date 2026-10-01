@@ -26,8 +26,8 @@ validate_secrets(settings)
 
 celery_app = Celery(
     "proxyhub",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
+    broker=settings.QUEUE_BROKER_URL,
+    backend=settings.QUEUE_RESULT_BACKEND,
 )
 
 # Fixed 60s tick: the tasks themselves gate on intervals stored in the DB
@@ -73,7 +73,7 @@ LOCK_TIMEOUT = 900.0
 
 def _get_lock_client() -> Redis:
     """Indirection so tests can swap in a fake Redis client."""
-    return Redis.from_url(settings.CELERY_BROKER_URL)
+    return Redis.from_url(settings.QUEUE_BROKER_URL)
 
 
 def _acquire_lock(name: str):
