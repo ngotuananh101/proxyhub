@@ -77,6 +77,19 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def _python_env() -> dict[str, str]:
+    """Environment for the Python children (api/gateway/worker/beat).
+
+    The root .env is layered on top of the ambient environment so local dev
+    picks up APP_KEY, DB_URL, etc. It is deliberately NOT handed to the
+    frontend child: the root .env ships empty VITE_* values (the Docker build
+    values, meaning same-origin), and Vite gives process env precedence over
+    frontend/.env — leaking them would blank out VITE_API_URL and break the
+    dashboard under `dev.py run`.
+    """
+    return {**os.environ, **_load_env_file(ROOT / ".env")}
+
+
 def _dev_commands() -> list[tuple[str, list[str]]]:
     # Celery needs the threads pool on Windows; the default prefork pool is
     # unsupported there.
@@ -133,16 +146,69 @@ def _dev_commands() -> list[tuple[str, list[str]]]:
     ]
 
 
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Send SIGTERM to the child's whole process group/tree.
+
+    npm/sh spawn vite/node and celery spawns prefork children; terminating
+    only the direct child leaves those grandchildren alive holding ports.
+    """
+    if proc.poll() is not None:
+        return
+    if IS_WINDOWS:
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        # The group already exited or is not ours; nothing left to signal.
+        pass
+
+
+def _kill_tree_force(proc: subprocess.Popen) -> None:
+    """SIGKILL the child's whole process group (POSIX only)."""
+    if proc.poll() is not None:
+        return
+    if IS_WINDOWS:
+        proc.kill()
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_services(_args: argparse.Namespace) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
 
-    env = {**os.environ, **_load_env_file(ROOT / ".env")}
+    python_env = _python_env()
     procs: list[tuple[str, subprocess.Popen]] = []
     for name, cmd in _dev_commands():
-        cwd = FRONTEND if name == "frontend" else ROOT
+        if name == "frontend":
+            cwd = FRONTEND
+            # Let `npm run dev` read frontend/.env; do not inject root .env.
+            env = dict(os.environ)
+        else:
+            cwd = ROOT
+            env = python_env
         print(f"+ starting {name}: {' '.join(cmd)}", flush=True)
-        procs.append((name, subprocess.Popen(cmd, cwd=cwd, shell=IS_WINDOWS, env=env)))
+        procs.append(
+            (
+                name,
+                subprocess.Popen(
+                    cmd,
+                    cwd=cwd,
+                    shell=IS_WINDOWS,
+                    env=env,
+                    start_new_session=not IS_WINDOWS,
+                ),
+            )
+        )
 
     stopping = False
 
@@ -153,13 +219,12 @@ def run_services(_args: argparse.Namespace) -> None:
         stopping = True
         print("\n+ stopping services...", flush=True)
         for _name, proc in procs:
-            if proc.poll() is None:
-                proc.terminate()
+            _kill_tree(proc)
         for _name, proc in procs:
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                _kill_tree_force(proc)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)

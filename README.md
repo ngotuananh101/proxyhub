@@ -87,7 +87,7 @@ flowchart LR
 | Service              | Host Port | Internal Container Port | Notes                                                                |
 | -------------------- | --------- | ----------------------- | -------------------------------------------------------------------- |
 | Frontend Dashboard   | 3000      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS                         |
-| FastAPI Backend      | Internal  | 8000                    | Internal to the `app` container; proxied via Nginx at `/api`, `/docs` |
+| FastAPI Backend      | 8000 (loopback) | 8000              | Published on `127.0.0.1:${APP_PORT:-8000}`; also proxied via Nginx at `/api`, `/docs` |
 | proxy.py Gateway     | 8899      | 8899                    | Rotating proxy port for scrapers/clients; shares the `app` container |
 | PostgreSQL           | Internal  | 5432                    | Primary database (persistent volume)                                 |
 | Redis                | Internal  | 6379                    | Broker/backend for Celery                                            |
@@ -358,7 +358,7 @@ The script is idempotent — tables that already contain rows are skipped, so it
 
 ## 🔒 Security Notes
 
-- **Bind to localhost during development:** In local dev, bind to `127.0.0.1`. In Docker, only expose necessary host ports (`FRONTEND_PORT:80` and `GATEWAY_PORT:8899`).
+- **Bind to localhost during development:** In local dev, bind to `127.0.0.1`. In Docker, only expose necessary host ports (`FRONTEND_PORT:80`, `APP_PORT:8000` and `GATEWAY_PORT:8899`), all bound to loopback.
 - **Internal API key:** The `/internal/proxies` endpoint returns proxy URLs including credentials, protected by `INTERNAL_API_KEY` (`X-Internal-Key`).
 - **Change `APP_KEY`:** Always generate a random `APP_KEY`; never use the default value in production.
 
