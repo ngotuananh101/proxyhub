@@ -46,7 +46,12 @@ def _command(name: str, *args: str) -> list[str]:
 
 def run(cmd: list[str], cwd: Path = ROOT) -> None:
     print("$", " ".join(str(c) for c in cmd), flush=True)
-    subprocess.run(cmd, check=True, cwd=cwd)
+    # `cmd` is a fixed argv of literal flags plus argparse-validated values
+    # (see admin()); it is never run through a shell and no untrusted string
+    # is re-parsed as an option. Sonar's S8705 (CWE-88) flags the argv
+    # passthrough generically, but this local dev bootstrap has no
+    # attacker-controlled request feeding it — suppressed as a false positive.
+    subprocess.run(cmd, check=True, cwd=cwd)  # NOSONAR
 
 
 def ensure_env_file(src: Path, dst: Path) -> None:
