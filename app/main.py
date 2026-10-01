@@ -7,6 +7,7 @@ from sqlmodel import Session
 from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.gateway_credentials import router as gateway_credentials_router
+from app.api.health import router as health_router
 from app.api.internal import router as internal_router
 from app.api.logs import router as logs_router
 from app.api.proxies import router as proxies_router
@@ -47,6 +48,7 @@ def create_app(db_engine=None):
     )
 
     app.include_router(auth_router)
+    app.include_router(health_router)
     app.include_router(proxies_router)
     app.include_router(stats_router)
     app.include_router(settings_router)
