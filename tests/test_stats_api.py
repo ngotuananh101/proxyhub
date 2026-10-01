@@ -33,9 +33,33 @@ def auth_headers_fixture(engine, client):
 def test_stats_summary(client, auth_headers, engine):
     with Session(engine) as session:
         tenant = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
-        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=tenant.id))
-        session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD, tenant_id=tenant.id))
-        session.add(Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.UNKNOWN, tenant_id=tenant.id))
+        session.add(
+            Proxy(
+                scheme="http",
+                host="1.1.1.1",
+                port=80,
+                status=ProxyStatus.ALIVE,
+                tenant_id=tenant.id,
+            )
+        )
+        session.add(
+            Proxy(
+                scheme="http",
+                host="2.2.2.2",
+                port=80,
+                status=ProxyStatus.DEAD,
+                tenant_id=tenant.id,
+            )
+        )
+        session.add(
+            Proxy(
+                scheme="http",
+                host="3.3.3.3",
+                port=80,
+                status=ProxyStatus.UNKNOWN,
+                tenant_id=tenant.id,
+            )
+        )
         session.commit()
 
     resp = client.get("/api/stats/summary", headers=auth_headers)

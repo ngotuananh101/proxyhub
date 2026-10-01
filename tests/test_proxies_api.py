@@ -125,9 +125,33 @@ def test_check_all_requires_auth(client):
 def test_clear_dead_deletes_only_dead(client, auth_headers, engine):
     with Session(engine) as session:
         tenant = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
-        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=tenant.id))
-        session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD, tenant_id=tenant.id))
-        session.add(Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.UNKNOWN, tenant_id=tenant.id))
+        session.add(
+            Proxy(
+                scheme="http",
+                host="1.1.1.1",
+                port=80,
+                status=ProxyStatus.ALIVE,
+                tenant_id=tenant.id,
+            )
+        )
+        session.add(
+            Proxy(
+                scheme="http",
+                host="2.2.2.2",
+                port=80,
+                status=ProxyStatus.DEAD,
+                tenant_id=tenant.id,
+            )
+        )
+        session.add(
+            Proxy(
+                scheme="http",
+                host="3.3.3.3",
+                port=80,
+                status=ProxyStatus.UNKNOWN,
+                tenant_id=tenant.id,
+            )
+        )
         session.commit()
 
     resp = client.post("/api/proxies/clear-dead", headers=auth_headers)

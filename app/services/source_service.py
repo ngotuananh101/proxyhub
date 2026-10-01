@@ -29,7 +29,9 @@ def normalize_line(line: str) -> str | None:
     return line
 
 
-def import_source_text(session: Session, text: str, tenant_id: int | None = None) -> tuple[int, int]:
+def import_source_text(
+    session: Session, text: str, tenant_id: int | None = None
+) -> tuple[int, int]:
     """Import proxies from fetched text. Returns (imported, duplicates).
 
     Existing proxies are looked up with a single bulk query instead of one
@@ -123,7 +125,11 @@ def is_due(source: ProxySource, now: datetime) -> bool:
 
 
 def fetch_and_import(
-    session: Session, source: ProxySource, timeout: float, retention_days: float, tenant_id: int | None = None
+    session: Session,
+    source: ProxySource,
+    timeout: float,
+    retention_days: float,
+    tenant_id: int | None = None,
 ) -> str:
     """Fetch one source, import its proxies, record the outcome.
 

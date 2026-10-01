@@ -1,4 +1,3 @@
-import random
 from urllib.parse import urlparse
 
 import sqlalchemy as sa

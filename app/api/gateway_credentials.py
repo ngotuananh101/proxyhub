@@ -1,4 +1,5 @@
 import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, update
 
@@ -55,7 +56,9 @@ def list_credentials(
     )
 
 
-@router.post("", response_model=GatewayCredentialCreatedResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=GatewayCredentialCreatedResponse, status_code=status.HTTP_201_CREATED
+)
 def create_credential(
     body: GatewayCredentialCreate,
     current_user: User = Depends(require_tenant_role(TenantRole.ADMIN)),
@@ -155,7 +158,9 @@ def update_credential(
 
     if body.rotate_password:
         if cred.auth_mode != AuthMode.BASIC:
-            raise HTTPException(status_code=422, detail="Cannot rotate password on IP whitelist credential")
+            raise HTTPException(
+                status_code=422, detail="Cannot rotate password on IP whitelist credential"
+            )
         generated_pw = secrets.token_urlsafe(16)
         cred.password_hash = hash_password(generated_pw)
         clear_auth_cache()

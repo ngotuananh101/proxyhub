@@ -112,7 +112,9 @@ class TestProxyIsolation:
         resp = client.post("/api/proxies", json=body, headers=admin_token)
         assert resp.status_code == 409
 
-    def test_create_duplicate_in_different_tenant_allowed(self, client, admin_token, second_tenant, engine):
+    def test_create_duplicate_in_different_tenant_allowed(
+        self, client, admin_token, second_tenant, engine
+    ):
         """Same host:port in a different tenant is allowed."""
         body = {"scheme": "http", "host": "1.1.1.1", "port": 80}
         client.post("/api/proxies", json=body, headers=admin_token)
@@ -136,7 +138,9 @@ class TestProxyIsolation:
         proxy_id = resp.json()["id"]
 
         member_headers = _create_member(engine, client, "member_xup", second_tenant)
-        resp = client.put(f"/api/proxies/{proxy_id}", json={"host": "99.99.99.99"}, headers=member_headers)
+        resp = client.put(
+            f"/api/proxies/{proxy_id}", json={"host": "99.99.99.99"}, headers=member_headers
+        )
         assert resp.status_code == 404
 
     def test_cross_tenant_delete_returns_404(self, client, admin_token, second_tenant, engine):
@@ -197,8 +201,24 @@ class TestProxyIsolation:
         with Session(engine) as session:
             t1 = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
             t2 = session.get(Tenant, second_tenant)
-            session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.DEAD, tenant_id=t1.id))
-            session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD, tenant_id=t2.id))
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="1.1.1.1",
+                    port=80,
+                    status=ProxyStatus.DEAD,
+                    tenant_id=t1.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="2.2.2.2",
+                    port=80,
+                    status=ProxyStatus.DEAD,
+                    tenant_id=t2.id,
+                )
+            )
             session.commit()
 
         resp = client.post("/api/proxies/clear-dead", headers=admin_token)
@@ -242,12 +262,60 @@ class TestStatsScoping:
         with Session(engine) as session:
             t1 = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
             t2 = session.get(Tenant, second_tenant)
-            session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=t1.id))
-            session.add(Proxy(scheme="http", host="1.1.1.2", port=80, status=ProxyStatus.ALIVE, tenant_id=t1.id))
-            session.add(Proxy(scheme="http", host="1.1.1.3", port=80, status=ProxyStatus.DEAD, tenant_id=t1.id))
-            session.add(Proxy(scheme="http", host="2.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=t2.id))
-            session.add(Proxy(scheme="http", host="2.1.1.2", port=80, status=ProxyStatus.UNKNOWN, tenant_id=t2.id))
-            session.add(Proxy(scheme="http", host="2.1.1.3", port=80, status=ProxyStatus.UNKNOWN, tenant_id=t2.id))
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="1.1.1.1",
+                    port=80,
+                    status=ProxyStatus.ALIVE,
+                    tenant_id=t1.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="1.1.1.2",
+                    port=80,
+                    status=ProxyStatus.ALIVE,
+                    tenant_id=t1.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="1.1.1.3",
+                    port=80,
+                    status=ProxyStatus.DEAD,
+                    tenant_id=t1.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="2.1.1.1",
+                    port=80,
+                    status=ProxyStatus.ALIVE,
+                    tenant_id=t2.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="2.1.1.2",
+                    port=80,
+                    status=ProxyStatus.UNKNOWN,
+                    tenant_id=t2.id,
+                )
+            )
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="2.1.1.3",
+                    port=80,
+                    status=ProxyStatus.UNKNOWN,
+                    tenant_id=t2.id,
+                )
+            )
             session.commit()
 
         resp = client.get("/api/stats/summary", headers=admin_token)
@@ -276,9 +344,21 @@ class TestLogsScoping:
         with Session(engine) as session:
             t1 = session.exec(select(Tenant).where(Tenant.slug == "default")).first()
             t2 = session.get(Tenant, second_tenant)
-            session.add(RequestLog(host="default-a.com", tenant_id=t1.id, created_at=datetime.now(timezone.utc)))
-            session.add(RequestLog(host="default-b.com", tenant_id=t1.id, created_at=datetime.now(timezone.utc)))
-            session.add(RequestLog(host="second-a.com", tenant_id=t2.id, created_at=datetime.now(timezone.utc)))
+            session.add(
+                RequestLog(
+                    host="default-a.com", tenant_id=t1.id, created_at=datetime.now(timezone.utc)
+                )
+            )
+            session.add(
+                RequestLog(
+                    host="default-b.com", tenant_id=t1.id, created_at=datetime.now(timezone.utc)
+                )
+            )
+            session.add(
+                RequestLog(
+                    host="second-a.com", tenant_id=t2.id, created_at=datetime.now(timezone.utc)
+                )
+            )
             session.commit()
 
         resp = client.get("/api/logs", headers=admin_token)
@@ -300,7 +380,9 @@ class TestSourcesScoping:
         """Sources list returns only sources for the active tenant."""
         with Session(engine) as session:
             t2 = session.get(Tenant, second_tenant)
-            session.add(ProxySource(name="second-src", url="https://second.com/list.txt", tenant_id=t2.id))
+            session.add(
+                ProxySource(name="second-src", url="https://second.com/list.txt", tenant_id=t2.id)
+            )
             session.commit()
 
         resp = client.get("/api/sources", headers=admin_token)
@@ -332,7 +414,9 @@ class TestSourcesScoping:
         names = {s["name"] for s in resp.json()}
         assert "member-src" in names
 
-    def test_cross_tenant_source_update_delete_returns_404(self, client, admin_token, second_tenant, engine):
+    def test_cross_tenant_source_update_delete_returns_404(
+        self, client, admin_token, second_tenant, engine
+    ):
         """A member cannot update/delete a source belonging to another tenant."""
         resp = client.post(
             "/api/sources",
@@ -363,7 +447,15 @@ class TestTenantHeaderOverride:
         """Super admin can override the tenant via X-Tenant-Id header."""
         with Session(engine) as session:
             t2 = session.get(Tenant, second_tenant)
-            session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.ALIVE, tenant_id=t2.id))
+            session.add(
+                Proxy(
+                    scheme="http",
+                    host="2.2.2.2",
+                    port=80,
+                    status=ProxyStatus.ALIVE,
+                    tenant_id=t2.id,
+                )
+            )
             session.commit()
 
         # Without override, admin sees only default tenant proxies
@@ -372,16 +464,24 @@ class TestTenantHeaderOverride:
         assert "2.2.2.2" not in hosts
 
         # With header override, admin sees second tenant proxies
-        resp = client.get("/api/proxies", headers={**admin_token, "X-Tenant-Id": str(second_tenant)})
+        resp = client.get(
+            "/api/proxies", headers={**admin_token, "X-Tenant-Id": str(second_tenant)}
+        )
         hosts = {p["host"] for p in resp.json()["items"]}
         assert "2.2.2.2" in hosts
         assert resp.json()["items"][0]["tenant_id"] == second_tenant
 
-    def test_non_admin_not_member_of_other_tenant_403(self, client, admin_token, second_tenant, engine):
+    def test_non_admin_not_member_of_other_tenant_403(
+        self, client, admin_token, second_tenant, engine
+    ):
         """Non-admin user who is not a member of the requested tenant gets 403."""
-        member_headers = _create_member(engine, client, "member_no_access", default_tenant_id(engine))
+        member_headers = _create_member(
+            engine, client, "member_no_access", default_tenant_id(engine)
+        )
 
-        resp = client.get("/api/proxies", headers={**member_headers, "X-Tenant-Id": str(second_tenant)})
+        resp = client.get(
+            "/api/proxies", headers={**member_headers, "X-Tenant-Id": str(second_tenant)}
+        )
         assert resp.status_code == 403
 
     def test_invalid_tenant_id_header_400(self, client, admin_token):
@@ -397,7 +497,9 @@ class TestTenantHeaderOverride:
             )
             session.add(user)
             session.commit()
-        resp_login = client.post("/api/auth/login", json={"username": "no_membership", "password": "pass1234"})
+        resp_login = client.post(
+            "/api/auth/login", json={"username": "no_membership", "password": "pass1234"}
+        )
         headers = {"Authorization": f"Bearer {resp_login.json()['access_token']}"}
 
         resp = client.get("/api/proxies", headers=headers)

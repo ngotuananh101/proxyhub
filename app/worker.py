@@ -266,7 +266,11 @@ def fetch_due_sources() -> int:
                 if not is_due(source, now):
                     continue
                 fetch_and_import(
-                    session, source, timeout=timeout, retention_days=retention_days, tenant_id=source.tenant_id
+                    session,
+                    source,
+                    timeout=timeout,
+                    retention_days=retention_days,
+                    tenant_id=source.tenant_id,
                 )
                 fetched += 1
 

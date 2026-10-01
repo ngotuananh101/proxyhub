@@ -32,7 +32,8 @@ def list_sources(
     user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_active_tenant_id),
 ):
-    return [_to_response(s) for s in session.exec(select(ProxySource).where(ProxySource.tenant_id == tenant_id)).all()]
+    rows = session.exec(select(ProxySource).where(ProxySource.tenant_id == tenant_id)).all()
+    return [_to_response(s) for s in rows]
 
 
 @router.post("", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)

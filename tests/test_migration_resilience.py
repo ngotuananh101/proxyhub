@@ -1,5 +1,4 @@
-import pytest
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, inspect, text
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, inspect
 from sqlmodel import Session, select
 
 from app.core.database import create_db_and_tables

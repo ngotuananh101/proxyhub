@@ -1,14 +1,12 @@
 import pytest
 from pydantic import ValidationError
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.models.credential import AuthMode, GatewayCredential
 from app.models.log import RequestLog
 from app.models.tenant import Tenant
 from app.schemas.credential import (
     GatewayCredentialCreate,
-    GatewayCredentialResponse,
-    GatewayCredentialUpdate,
 )
 
 

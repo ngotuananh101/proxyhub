@@ -17,12 +17,18 @@ def stats_summary(
 ):
     total = session.exec(select(func.count(Proxy.id)).where(Proxy.tenant_id == tenant_id)).one()
     alive = session.exec(
-        select(func.count(Proxy.id)).where(Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.ALIVE)
+        select(func.count(Proxy.id)).where(
+            Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.ALIVE
+        )
     ).one()
     dead = session.exec(
-        select(func.count(Proxy.id)).where(Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.DEAD)
+        select(func.count(Proxy.id)).where(
+            Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.DEAD
+        )
     ).one()
     unknown = session.exec(
-        select(func.count(Proxy.id)).where(Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.UNKNOWN)
+        select(func.count(Proxy.id)).where(
+            Proxy.tenant_id == tenant_id, Proxy.status == ProxyStatus.UNKNOWN
+        )
     ).one()
     return {"total": total, "alive": alive, "dead": dead, "unknown": unknown}

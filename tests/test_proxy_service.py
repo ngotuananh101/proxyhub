@@ -94,10 +94,22 @@ class TestSelectRandomProxy:
 
     def test_select_with_tenant_id_filter(self, session):
         # tenant 1 proxies
-        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1))
+        session.add(
+            Proxy(
+                scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1
+            )
+        )
         # tenant 2 proxies
-        session.add(Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.ALIVE, tenant_id=2))
-        session.add(Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.ALIVE, tenant_id=2))
+        session.add(
+            Proxy(
+                scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.ALIVE, tenant_id=2
+            )
+        )
+        session.add(
+            Proxy(
+                scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.ALIVE, tenant_id=2
+            )
+        )
         # unscoped proxy (tenant_id=None)
         session.add(Proxy(scheme="http", host="4.4.4.4", port=80, status=ProxyStatus.ALIVE))
         session.commit()
@@ -119,7 +131,11 @@ class TestSelectRandomProxy:
 
     def test_select_with_tenant_id_no_matches(self, session):
         # No proxies for tenant 999
-        session.add(Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1))
+        session.add(
+            Proxy(
+                scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE, tenant_id=1
+            )
+        )
         session.commit()
 
         assert select_random_proxy(session, tenant_id=999) is None

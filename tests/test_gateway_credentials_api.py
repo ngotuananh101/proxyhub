@@ -31,7 +31,12 @@ def test_list_credentials_requires_auth(client):
 
 def test_create_basic_credential(client, engine):
     with Session(engine) as session:
-        user = User(username="admin1", email="a1@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin1",
+            email="a1@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 1", slug="t1-crud")
         session.add(tenant)
@@ -57,7 +62,12 @@ def test_create_basic_credential(client, engine):
 
 def test_create_duplicate_username_in_tenant_fails(client, engine):
     with Session(engine) as session:
-        user = User(username="admin2", email="a2@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin2",
+            email="a2@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 2", slug="t2-crud")
         session.add(tenant)
@@ -83,7 +93,12 @@ def test_create_duplicate_username_in_tenant_fails(client, engine):
 
 def test_create_ip_whitelist_credential(client, engine):
     with Session(engine) as session:
-        user = User(username="admin3", email="a3@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin3",
+            email="a3@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 3", slug="t3-crud")
         session.add(tenant)
@@ -94,7 +109,11 @@ def test_create_ip_whitelist_credential(client, engine):
     headers = auth_headers(user, tenant.id)
     resp = client.post(
         "/api/gateway-credentials",
-        json={"name": "office-net", "auth_mode": "ip_whitelist", "cidrs": "192.168.1.0/24, 10.0.0.1"},
+        json={
+            "name": "office-net",
+            "auth_mode": "ip_whitelist",
+            "cidrs": "192.168.1.0/24, 10.0.0.1",
+        },
         headers=headers,
     )
     assert resp.status_code == 201
@@ -107,7 +126,12 @@ def test_create_ip_whitelist_credential(client, engine):
 
 def test_create_ip_whitelist_invalid_cidr_fails(client, engine):
     with Session(engine) as session:
-        user = User(username="admin4", email="a4@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin4",
+            email="a4@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 4", slug="t4-crud")
         session.add(tenant)
@@ -126,7 +150,12 @@ def test_create_ip_whitelist_invalid_cidr_fails(client, engine):
 
 def test_rotate_password_returns_new_password_once(client, engine):
     with Session(engine) as session:
-        user = User(username="admin5", email="a5@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin5",
+            email="a5@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 5", slug="t5-crud")
         session.add(tenant)
@@ -156,7 +185,12 @@ def test_rotate_password_returns_new_password_once(client, engine):
 
 def test_toggle_active_status(client, engine):
     with Session(engine) as session:
-        user = User(username="admin6", email="a6@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin6",
+            email="a6@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 6", slug="t6-crud")
         session.add(tenant)
@@ -183,7 +217,12 @@ def test_toggle_active_status(client, engine):
 
 def test_delete_credential(client, engine):
     with Session(engine) as session:
-        user = User(username="admin7", email="a7@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin7",
+            email="a7@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 7", slug="t7-crud")
         session.add(tenant)
@@ -209,7 +248,12 @@ def test_delete_credential(client, engine):
 
 def test_delete_credential_with_existing_logs(client, engine):
     with Session(engine) as session:
-        user = User(username="admin_del_log", email="adel@test.com", hashed_password=hash_password("pw"), is_admin=True)
+        user = User(
+            username="admin_del_log",
+            email="adel@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant Del Log", slug="t-del-log")
         session.add(tenant)
@@ -219,7 +263,12 @@ def test_delete_credential_with_existing_logs(client, engine):
         tenant_id = tenant.id
         headers = auth_headers(user, tenant_id)
 
-        cred = GatewayCredential(tenant_id=tenant_id, name="to-del-with-logs", auth_mode=AuthMode.BASIC, username="del_log_user")
+        cred = GatewayCredential(
+            tenant_id=tenant_id,
+            name="to-del-with-logs",
+            auth_mode=AuthMode.BASIC,
+            username="del_log_user",
+        )
         session.add(cred)
         session.commit()
         session.refresh(cred)
@@ -243,7 +292,12 @@ def test_delete_credential_with_existing_logs(client, engine):
 
 def test_member_cannot_create_or_delete(client, engine):
     with Session(engine) as session:
-        user = User(username="member1", email="m1@test.com", hashed_password=hash_password("pw"), is_admin=False)
+        user = User(
+            username="member1",
+            email="m1@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=False,
+        )
         session.add(user)
         tenant = Tenant(name="Tenant 8", slug="t8-crud")
         session.add(tenant)

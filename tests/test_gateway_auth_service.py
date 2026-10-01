@@ -1,5 +1,6 @@
 import time
 from unittest.mock import patch
+
 import pytest
 from sqlmodel import Session
 
@@ -33,7 +34,9 @@ def test_validate_cidrs_invalid():
 
 def test_validate_cidrs_rejects_exceeding_max_limit():
     from app.services.gateway_auth_service import MAX_CIDRS_PER_CREDENTIAL
-    too_many = ",".join([f"10.0.{i // 256}.{i % 256}" for i in range(MAX_CIDRS_PER_CREDENTIAL + 10)])
+    too_many = ",".join(
+        [f"10.0.{i // 256}.{i % 256}" for i in range(MAX_CIDRS_PER_CREDENTIAL + 10)]
+    )
     with pytest.raises(ValueError, match="Too many CIDRs"):
         validate_cidrs(too_many)
 
@@ -100,7 +103,9 @@ def test_bcrypt_cache_ttl_expiry(engine):
 
     # Fast-forward time past TTL using mock
     with patch("app.services.gateway_auth_service.time.time", return_value=time.time() + 100):
-        with patch("app.services.gateway_auth_service.verify_password", return_value=True) as mock_verify:
+        with patch(
+        "app.services.gateway_auth_service.verify_password", return_value=True
+    ) as mock_verify:
             assert verify_credential_password(cred, pw) is True
             mock_verify.assert_called_once()
 

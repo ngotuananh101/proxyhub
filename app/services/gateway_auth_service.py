@@ -1,10 +1,9 @@
-from collections import OrderedDict
 import hashlib
 import ipaddress
 import logging
 import threading
 import time
-from typing import Optional
+from collections import OrderedDict
 
 from sqlmodel import Session, select
 
@@ -16,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 MAX_CIDRS_PER_CREDENTIAL = 100
 
-# Bcrypt verification LRU cache using OrderedDict for O(1) eviction: (cred_id, sha256(password)) -> timestamp
+# Bcrypt verification LRU cache using OrderedDict for O(1) eviction:
+# (cred_id, sha256(password)) -> timestamp
 _AUTH_CACHE: OrderedDict[tuple[int, str], float] = OrderedDict()
 _CACHE_LOCK = threading.Lock()
 _MAX_CACHE_SIZE = 10_000

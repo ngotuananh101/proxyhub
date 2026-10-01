@@ -1,7 +1,7 @@
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from app.models.tenant import Tenant, TenantMembership
+from app.models.tenant import Tenant
 
 DEFAULT_TENANT_SLUG = "default"
 DEFAULT_TENANT_NAME = "Default"

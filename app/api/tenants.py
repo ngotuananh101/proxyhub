@@ -73,7 +73,9 @@ def list_members(
     ]
 
 
-@router.post("/{tenant_id}/members", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{tenant_id}/members", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED
+)
 def add_member(
     tenant_id: int,
     body: MembershipCreate,

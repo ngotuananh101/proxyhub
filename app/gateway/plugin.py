@@ -1,9 +1,12 @@
-"""RotateProxyPlugin — proxy.py plugin that authenticates clients and fetches a proxy from ProxyHub backend per request."""
+"""RotateProxyPlugin — proxy.py plugin that authenticates clients.
+
+Fetches a proxy from the ProxyHub backend per request.
+"""
 import base64
-from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -212,12 +215,11 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
 
     def _fire_denied_log(self, request: HttpParser, client_ip: str) -> None:
         """Send access log entry for rejected authentication attempt."""
-        host, port = None, None
+        host = None
         if request.has_header(b"host"):
             url = Url.from_bytes(request.header(b"host"))
             if url.hostname:
                 host = url.hostname.decode("utf-8")
-                port = url.port or (443 if request.is_https_tunnel else 80)
         path = None if not request.path else request.path.decode()
         method = None if not request.method else request.method.decode()
 
