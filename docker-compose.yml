@@ -19,15 +19,15 @@ services:
     container_name: proxyhub-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-proxyhub}
-      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
-      - POSTGRES_DB=${POSTGRES_DB:-proxyhub}
+      - POSTGRES_USER=${DB_USERNAME:-proxyhub}
+      - "POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}"
+      - POSTGRES_DB=${DB_DATABASE:-proxyhub}
     volumes:
       # postgres:18+ expects the mount at /var/lib/postgresql and stores
       # data in a version-specific subdirectory (enables pg_upgrade).
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-proxyhub} -d $${POSTGRES_DB:-proxyhub}"]
+      test: ["CMD-SHELL", "pg_isready -U $${DB_USERNAME:-proxyhub} -d $${DB_DATABASE:-proxyhub}"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -35,89 +35,38 @@ services:
     networks:
       - proxyhub-network
 
-  backend:
+  # One container runs the API, Celery worker, Celery beat, and the proxy
+  # gateway under supervisor (see deploy/supervisor.conf).
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: proxyhub-backend
+    container_name: proxyhub-app
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DB_URL=postgresql+psycopg://${DB_USERNAME:-proxyhub}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE:-proxyhub}
+      - QUEUE_BROKER_URL=redis://redis:6379/1
+      - QUEUE_RESULT_BACKEND=redis://redis:6379/2
+      # Gateway shares this container, so it reaches the API over loopback.
+      - GATEWAY_API_URL=http://127.0.0.1:8000/internal/proxies
+      - GATEWAY_SESSION_URL=http://127.0.0.1:8000/internal/gateway/session
+      - GATEWAY_LOG_URL=http://127.0.0.1:8000/internal/logs
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+      - "127.0.0.1:${GATEWAY_PORT:-8899}:8899"
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    networks:
-      - proxyhub-network
-
-  celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: proxyhub-worker
-    restart: unless-stopped
-    command: celery -A app.worker.celery_app worker --loglevel=info
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    depends_on:
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_started
-    networks:
-      - proxyhub-network
-
-  celery_beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: proxyhub-beat
-    restart: unless-stopped
-    command: celery -A app.worker.celery_app beat --loglevel=info
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=postgresql+psycopg://proxyhub:${POSTGRES_PASSWORD}@postgres:5432/proxyhub
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-    depends_on:
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_started
-    networks:
-      - proxyhub-network
-
-  gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: proxyhub-gateway
-    restart: unless-stopped
-    command: python -m proxy --plugins app.gateway.plugin.RotateProxyPlugin --hostname 0.0.0.0 --port 8899
-    env_file:
-      - .env
-    environment:
-      - GATEWAY_API_URL=http://backend:8000/internal/proxies
-      - GATEWAY_SESSION_URL=http://backend:8000/internal/gateway/session
-      - GATEWAY_LOG_URL=http://backend:8000/internal/logs
-    ports:
-      - "127.0.0.1:${GATEWAY_PORT:-8899}:8899"
-    depends_on:
-      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - proxyhub-network
 
@@ -125,16 +74,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_WS_URL: ${VITE_WS_URL:-}
     container_name: proxyhub-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
     depends_on:
-      - backend
+      app:
+        condition: service_started
     networks:
       - proxyhub-network
-
-  # Nginx service removed — using host nginx instead
 
 volumes:
   postgres_data:
