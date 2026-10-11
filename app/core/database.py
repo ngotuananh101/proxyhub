@@ -2,12 +2,15 @@ from sqlalchemy import event
 from sqlalchemy.pool import QueuePool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.core.config import settings
+from app.core.config import build_db_url, settings
 
 connect_args = {}
 engine_kwargs = {}
 
-if settings.DB_URL.startswith("sqlite"):
+# Resolved once at import from the discrete DB_* settings.
+DB_URL = build_db_url(settings)
+
+if DB_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 else:
     engine_kwargs.update({
@@ -18,12 +21,12 @@ else:
         "pool_recycle": 3600,
     })
 
-engine = create_engine(settings.DB_URL, connect_args=connect_args, **engine_kwargs)
+engine = create_engine(DB_URL, connect_args=connect_args, **engine_kwargs)
 
 
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_connection, connection_record):
-    if not settings.DB_URL.startswith("sqlite"):
+    if not DB_URL.startswith("sqlite"):
         return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")

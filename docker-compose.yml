@@ -46,7 +46,12 @@ services:
     env_file:
       - .env
     environment:
-      - DB_URL=postgresql+psycopg://${DB_USERNAME:-proxyhub}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE:-proxyhub}
+      - DB_CONNECTION=postgresql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-proxyhub}
+      - DB_USERNAME=${DB_USERNAME:-proxyhub}
+      - DB_PASSWORD=${DB_PASSWORD}
       - QUEUE_BROKER_URL=redis://redis:6379/1
       - QUEUE_RESULT_BACKEND=redis://redis:6379/2
       # Gateway shares this container, so it reaches the API over loopback.
@@ -80,7 +85,7 @@ services:
     container_name: proxyhub-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     depends_on:
       app:
         condition: service_started

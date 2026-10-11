@@ -25,6 +25,61 @@ VENV_BIN = VENV_DIR / ("Scripts" if IS_WINDOWS else "bin")
 PY = VENV_BIN / ("python.exe" if IS_WINDOWS else "python")
 FRONTEND = ROOT / "frontend"
 
+# Conventional ports used when the corresponding .env variable is unset.
+DEFAULT_APP_PORT = 8000
+DEFAULT_GATEWAY_PORT = 8899
+DEFAULT_FRONTEND_PORT = 5173  # Vite dev server default
+
+
+def _env_int(env: dict[str, str], key: str, default: int) -> int:
+    """Read an int from env, falling back to default on missing/invalid values."""
+    raw = env.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _ports(env: dict[str, str]) -> tuple[int, int, int]:
+    """Resolve (APP_PORT, GATEWAY_PORT, FRONTEND_PORT) from the environment."""
+    return (
+        _env_int(env, "APP_PORT", DEFAULT_APP_PORT),
+        _env_int(env, "GATEWAY_PORT", DEFAULT_GATEWAY_PORT),
+        _env_int(env, "FRONTEND_PORT", DEFAULT_FRONTEND_PORT),
+    )
+
+
+def _backend_urls(app_port: int) -> dict[str, str]:
+    """Internal API URLs the gateway uses to reach the local backend."""
+    base = f"http://127.0.0.1:{app_port}"
+    return {
+        "GATEWAY_API_URL": f"{base}/internal/proxies",
+        "GATEWAY_SESSION_URL": f"{base}/internal/gateway/session",
+        "GATEWAY_LOG_URL": f"{base}/internal/logs",
+    }
+
+
+def _frontend_urls(app_port: int) -> dict[str, str]:
+    """API/WS URLs the Vite dev server hands to the dashboard."""
+    return {
+        "VITE_API_URL": f"http://localhost:{app_port}",
+        "VITE_WS_URL": f"ws://localhost:{app_port}",
+    }
+
+
+def _cors_origins(existing: str, frontend_port: int) -> str:
+    """Ensure the frontend dev origin is present in the CORS allow-list."""
+    origins = [o.strip() for o in existing.split(",") if o.strip()]
+    for candidate in (
+        f"http://localhost:{frontend_port}",
+        f"http://127.0.0.1:{frontend_port}",
+    ):
+        if candidate not in origins:
+            origins.append(candidate)
+    return ",".join(origins)
+
 
 def _venv_script(name: str) -> str:
     suffix = ".exe" if IS_WINDOWS else ""
@@ -99,7 +154,7 @@ def _python_env() -> dict[str, str]:
     """Environment for the Python children (api/gateway/worker/beat).
 
     The root .env is layered on top of the ambient environment so local dev
-    picks up APP_KEY, DB_URL, etc. It is deliberately NOT handed to the
+    picks up APP_KEY, the DB_* variables, etc. It is deliberately NOT handed to the
     frontend child: the root .env ships empty VITE_* values (the Docker build
     values, meaning same-origin), and Vite gives process env precedence over
     frontend/.env — leaking them would blank out VITE_API_URL and break the
@@ -108,7 +163,9 @@ def _python_env() -> dict[str, str]:
     return {**os.environ, **_load_env_file(ROOT / ".env")}
 
 
-def _dev_commands() -> list[tuple[str, list[str]]]:
+def _dev_commands(
+    app_port: int, gateway_port: int, frontend_port: int
+) -> list[tuple[str, list[str]]]:
     # Celery needs the threads pool on Windows; the default prefork pool is
     # unsupported there.
     worker_pool = ["--pool=threads", "--concurrency=8"] if IS_WINDOWS else []
@@ -122,10 +179,13 @@ def _dev_commands() -> list[tuple[str, list[str]]]:
                 "--host",
                 "127.0.0.1",
                 "--port",
-                "8000",
+                str(app_port),
             ],
         ),
-        ("frontend", _command("npm", "run", "dev")),
+        (
+            "frontend",
+            _command("npm", "run", "dev", "--", "--port", str(frontend_port)),
+        ),
         (
             "gateway",
             [
@@ -137,7 +197,7 @@ def _dev_commands() -> list[tuple[str, list[str]]]:
                 "--hostname",
                 "127.0.0.1",
                 "--port",
-                "8899",
+                str(gateway_port),
             ],
         ),
         (
@@ -200,17 +260,15 @@ def _kill_tree_force(proc: subprocess.Popen) -> None:
         pass
 
 
-def _spawn(name: str, cmd: list[str], python_env: dict[str, str]) -> subprocess.Popen:
+def _spawn(name: str, cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
     """Start one dev process with the environment it needs.
 
-    The frontend child gets only the ambient environment so `npm run dev`
-    reads frontend/.env (see _python_env); the Python children get the root
-    .env layered in.
+    The caller passes the fully-resolved environment for the service; the
+    frontend child gets only the ambient environment plus the derived VITE_*
+    values (see _python_env for why the root .env is not handed to it), while
+    the Python children get the root .env layered in.
     """
-    if name == "frontend":
-        cwd, env = FRONTEND, dict(os.environ)
-    else:
-        cwd, env = ROOT, python_env
+    cwd = FRONTEND if name == "frontend" else ROOT
     print(f"+ starting {name}: {' '.join(cmd)}", flush=True)
     return subprocess.Popen(
         cmd,
@@ -233,8 +291,23 @@ def run_services(_args: argparse.Namespace) -> None:
     if not PY.exists():
         sys.exit("No venv found. Run `python dev.py setup` first.")
 
-    python_env = _python_env()
-    procs = [(name, _spawn(name, cmd, python_env)) for name, cmd in _dev_commands()]
+    root_env = _python_env()
+    app_port, gateway_port, frontend_port = _ports(root_env)
+
+    # Local dev: derive every loopback URL from APP_PORT so changing the port
+    # is enough. These override whatever .env shipped for the local case.
+    python_env = {
+        **root_env,
+        **_backend_urls(app_port),
+        "CORS_ORIGINS": _cors_origins(root_env.get("CORS_ORIGINS", ""), frontend_port),
+    }
+    frontend_env = {**os.environ, **_frontend_urls(app_port)}
+
+    env_by_name = {"frontend": frontend_env}
+    procs = [
+        (name, _spawn(name, cmd, env_by_name.get(name, python_env)))
+        for name, cmd in _dev_commands(app_port, gateway_port, frontend_port)
+    ]
 
     stopping = False
 

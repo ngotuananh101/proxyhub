@@ -1,8 +1,19 @@
+from urllib.parse import quote_plus
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DB_URL: str = "sqlite:///./proxyhub.db"
+    # Database connection, assembled into a SQLAlchemy URL by build_db_url().
+    DB_CONNECTION: str = "sqlite"  # "sqlite" | "postgresql" (alias "postgres")
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 5432
+    # For sqlite this is the file path; for postgres the database name.
+    DB_DATABASE: str = "./proxyhub.db"
+    DB_USERNAME: str = "proxyhub"
+    DB_PASSWORD: str = ""
+    DB_SSLMODE: str = ""  # e.g. "require"; omitted from the URL when empty
+
     APP_KEY: str = "change_me"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_TTL: int = 1440
@@ -25,6 +36,31 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def build_db_url(s: Settings) -> str:
+    """Assemble a SQLAlchemy database URL from the discrete DB_* settings.
+
+    SQLite uses DB_DATABASE as the file path and ignores host/port/credentials.
+    PostgreSQL (also accepts the "postgres" alias) builds a psycopg URL, URL-
+    encoding the credentials so special characters cannot break the URL, and
+    appends ``?sslmode=`` when DB_SSLMODE is set.
+    """
+    connection = s.DB_CONNECTION.lower()
+    if connection == "sqlite":
+        return f"sqlite:///{s.DB_DATABASE}"
+    if connection in ("postgresql", "postgres"):
+        user = quote_plus(s.DB_USERNAME)
+        password = quote_plus(s.DB_PASSWORD)
+        url = (
+            f"postgresql+psycopg://{user}:{password}"
+            f"@{s.DB_HOST}:{s.DB_PORT}/{s.DB_DATABASE}"
+        )
+        if s.DB_SSLMODE:
+            url = f"{url}?sslmode={s.DB_SSLMODE}"
+        return url
+    raise ValueError(f"Unsupported DB_CONNECTION: {s.DB_CONNECTION!r}")
+
 
 # Placeholder values that must never reach a running deployment.
 INSECURE_PLACEHOLDERS = {"", "change_me"}
