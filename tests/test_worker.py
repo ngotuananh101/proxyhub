@@ -1,4 +1,6 @@
 import asyncio
+import importlib
+import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -521,3 +523,41 @@ class TestPurgeRequestLogs:
         purge_request_logs()
 
         assert PURGE_LOG_LOCK_NAME not in _fake_locks
+
+
+class TestLegacyCeleryEnvVars:
+    """Celery reads CELERY_* env vars ahead of its config (celery/app/utils.py).
+
+    A stray CELERY_BROKER_URL/CELERY_RESULT_BACKEND in the deployment
+    environment would silently override the normalized QUEUE_* URLs the app
+    passes in, reintroducing the rediss/ssl_cert_reqs crash. Importing
+    app.worker must strip them so app config always wins.
+    """
+
+    LEGACY = {
+        "CELERY_BROKER_URL": "redis://legacy-host:6379/9",
+        "CELERY_BROKER_READ_URL": "redis://legacy-host:6379/7",
+        "CELERY_BROKER_WRITE_URL": "redis://legacy-host:6379/6",
+        "CELERY_RESULT_BACKEND": "redis://legacy-host:6379/8",
+    }
+
+    def test_legacy_env_vars_are_stripped(self, monkeypatch):
+        for key, value in self.LEGACY.items():
+            monkeypatch.setenv(key, value)
+
+        import app.worker
+
+        importlib.reload(app.worker)
+
+        for key in self.LEGACY:
+            assert key not in os.environ
+
+        # And the effective Celery config comes from app settings, not the
+        # stripped legacy values.
+        assert app.worker.celery_app.conf.broker_url == (
+            app.worker.settings.redis_broker_url
+        )
+        assert app.worker.celery_app.conf.result_backend == (
+            app.worker.settings.redis_result_backend
+        )
+
