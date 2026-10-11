@@ -45,23 +45,29 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # A mapping (not a list) so docker-compose.external.yml can replace
+    # individual keys when deploying against external Postgres/Redis.
     environment:
-      - DB_CONNECTION=postgresql
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-proxyhub}
-      - DB_USERNAME=${DB_USERNAME:-proxyhub}
-      - DB_PASSWORD=${DB_PASSWORD}
+      DB_CONNECTION: postgresql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-proxyhub}
+      DB_USERNAME: ${DB_USERNAME:-proxyhub}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # The bundled postgres does not speak TLS; blank any DB_SSLMODE (e.g.
+      # require for Aiven) that .env would otherwise leak into this container.
+      DB_SSLMODE: ""
       # Default to the bundled redis service. To use a Redis already running
       # on the host, set DOCKER_QUEUE_* in .env (e.g.
       # redis://host.docker.internal:6379/1); extra_hosts makes that name
-      # resolve on Linux too.
-      - QUEUE_BROKER_URL=${DOCKER_QUEUE_BROKER_URL:-redis://redis:6379/1}
-      - QUEUE_RESULT_BACKEND=${DOCKER_QUEUE_RESULT_BACKEND:-redis://redis:6379/2}
+      # resolve on Linux too. For external Postgres/Redis (e.g. Aiven), layer
+      # docker-compose.external.yml with -f (see README).
+      QUEUE_BROKER_URL: ${DOCKER_QUEUE_BROKER_URL:-redis://redis:6379/1}
+      QUEUE_RESULT_BACKEND: ${DOCKER_QUEUE_RESULT_BACKEND:-redis://redis:6379/2}
       # Gateway shares this container, so it reaches the API over loopback.
-      - GATEWAY_API_URL=http://127.0.0.1:8000/internal/proxies
-      - GATEWAY_SESSION_URL=http://127.0.0.1:8000/internal/gateway/session
-      - GATEWAY_LOG_URL=http://127.0.0.1:8000/internal/logs
+      GATEWAY_API_URL: http://127.0.0.1:8000/internal/proxies
+      GATEWAY_SESSION_URL: http://127.0.0.1:8000/internal/gateway/session
+      GATEWAY_LOG_URL: http://127.0.0.1:8000/internal/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

@@ -116,6 +116,15 @@ Then review `.env` and adjust the database host/credentials and ports for your d
 docker compose up -d --build
 ```
 
+> **Using external PostgreSQL/Redis (e.g. Aiven)?** The bundled `postgres` and
+> `redis` services are started by default. To point at managed services
+> instead, set the `DB_*` values and the `DOCKER_QUEUE_*` URLs in `.env`, then
+> layer the external overlay (see [External PostgreSQL & Redis](#-external-postgresql--redis)):
+>
+> ```bash
+> docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
+> ```
+
 ### 3. Create your initial Admin account
 
 ```bash
@@ -135,6 +144,32 @@ docker compose run --rm app python -m app.cli create-admin --username admin --em
 - **Restart services:** `docker compose restart`
 - **Stop all services:** `docker compose down`
 - **Stop and remove volumes:** `docker compose down -v`
+
+---
+
+## ☁️ External PostgreSQL & Redis
+
+By default `docker compose up` runs the bundled `postgres` and `redis`
+services. To deploy against managed services (e.g. Aiven) instead, layer
+`docker-compose.external.yml` on top of the base file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
+```
+
+The overlay reads the DB settings from `.env` (the base file hard-codes them to
+the bundled `postgres` service), points Celery at the external Redis, and skips
+the bundled `postgres`/`redis` services. It requires **Docker Compose ≥ 2.24**
+(for the `!reset` tag).
+
+| Scenario | Command | `.env` values |
+| --- | --- | --- |
+| All bundled (default) | `docker compose up -d --build` | leave `DB_*`/`DOCKER_QUEUE_*` at defaults |
+| Redis on host / external, bundled Postgres | `docker compose up -d --build` | set `DOCKER_QUEUE_BROKER_URL`, `DOCKER_QUEUE_RESULT_BACKEND` |
+| External Postgres + Redis (Aiven) | `docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build` | set `DB_*` **and** `DOCKER_QUEUE_*` |
+
+`docker-compose.external.yml` fails fast if `DB_HOST`, `DB_PASSWORD`,
+`DOCKER_QUEUE_BROKER_URL`, or `DOCKER_QUEUE_RESULT_BACKEND` are unset.
 
 ---
 
@@ -198,7 +233,10 @@ FRONTEND_PORT=5173
 # The SQLAlchemy URL is assembled from these variables (see build_db_url in
 # app/core/config.py) — there is no single DB_URL to set.
 # SQLite: set DB_CONNECTION=sqlite and DB_DATABASE to the file path.
-# Docker: docker-compose.yml overrides host/port to reach the postgres service.
+# Docker: docker-compose.yml points these at the bundled `postgres` service.
+# To use an external PostgreSQL (e.g. Aiven) instead, set the values below and
+# deploy with the external overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
 DB_CONNECTION=postgresql
 DB_HOST=127.0.0.1
 DB_PORT=5432
@@ -216,7 +254,8 @@ QUEUE_BROKER_URL=redis://127.0.0.1:6379/1
 QUEUE_RESULT_BACKEND=redis://127.0.0.1:6379/2
 # Docker only. Leave unset to use the bundled `redis` service. Set these to
 # point at a Redis already running on the host (the name resolves via the
-# extra_hosts entry in docker-compose.yml).
+# extra_hosts entry in docker-compose.yml), or at an external Redis (e.g.
+# Aiven) — required when deploying with docker-compose.external.yml.
 # DOCKER_QUEUE_BROKER_URL=redis://host.docker.internal:6379/1
 # DOCKER_QUEUE_RESULT_BACKEND=redis://host.docker.internal:6379/2
 

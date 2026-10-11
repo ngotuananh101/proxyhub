@@ -1,0 +1,32 @@
+# Overlay for deploying against external PostgreSQL and Redis (e.g. Aiven).
+#
+# Layer it on top of the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
+#
+# It reads the DB settings from .env (which docker-compose.yml hard-codes to
+# the bundled `postgres` service), points Celery at the external Redis, drops
+# the bundled `depends_on`, and parks the bundled `postgres`/`redis` services
+# behind a profile so they are not started.
+#
+# Requires Docker Compose >= 2.24 for the `!reset` tag.
+services:
+  app:
+    environment:
+      DB_CONNECTION: ${DB_CONNECTION:-postgresql}
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env (e.g. your Aiven host)}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_DATABASE: ${DB_DATABASE:-proxyhub}
+      DB_USERNAME: ${DB_USERNAME:-proxyhub}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_SSLMODE: ${DB_SSLMODE:-}
+      QUEUE_BROKER_URL: ${DOCKER_QUEUE_BROKER_URL:?set DOCKER_QUEUE_BROKER_URL in .env}
+      QUEUE_RESULT_BACKEND: ${DOCKER_QUEUE_RESULT_BACKEND:?set DOCKER_QUEUE_RESULT_BACKEND in .env}
+    # No bundled database/broker to wait for.
+    depends_on: !reset null
+
+  # Keep the bundled services out of the model when this overlay is active.
+  postgres:
+    profiles: ["bundled"]
+  redis:
+    profiles: ["bundled"]
