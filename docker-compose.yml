@@ -52,12 +52,18 @@ services:
       - DB_DATABASE=${DB_DATABASE:-proxyhub}
       - DB_USERNAME=${DB_USERNAME:-proxyhub}
       - DB_PASSWORD=${DB_PASSWORD}
-      - QUEUE_BROKER_URL=redis://redis:6379/1
-      - QUEUE_RESULT_BACKEND=redis://redis:6379/2
+      # Default to the bundled redis service. To use a Redis already running
+      # on the host, set DOCKER_QUEUE_* in .env (e.g.
+      # redis://host.docker.internal:6379/1); extra_hosts makes that name
+      # resolve on Linux too.
+      - QUEUE_BROKER_URL=${DOCKER_QUEUE_BROKER_URL:-redis://redis:6379/1}
+      - QUEUE_RESULT_BACKEND=${DOCKER_QUEUE_RESULT_BACKEND:-redis://redis:6379/2}
       # Gateway shares this container, so it reaches the API over loopback.
       - GATEWAY_API_URL=http://127.0.0.1:8000/internal/proxies
       - GATEWAY_SESSION_URL=http://127.0.0.1:8000/internal/gateway/session
       - GATEWAY_LOG_URL=http://127.0.0.1:8000/internal/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
       - "127.0.0.1:${GATEWAY_PORT:-8899}:8899"
