@@ -143,19 +143,24 @@ function GeneralSettingsForm({ item }: { item: SettingItem }) {
   )
 }
 
+function itemsToValues(items: SettingItem[]): Record<string, string> {
+  return Object.fromEntries(items.map((item) => [item.key, String(item.value)]))
+}
+
 function SourceSettingsForm({ items }: { items: SettingItem[] }) {
   const queryClient = useQueryClient()
-  const [values, setValues] = useState<Record<string, string>>({})
+  // Seed from the server values on mount, then reseed when they change (e.g.
+  // after a refetch). Adjusting state during render is React's documented
+  // pattern for this; the parent memoizes `items` so the reference only
+  // changes when the data actually changes.
+  const [values, setValues] = useState<Record<string, string>>(() => itemsToValues(items))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [prevItems, setPrevItems] = useState(items)
 
-  // Reseed when the server values change. Adjusting state during render is
-  // React's documented pattern for this; the parent memoizes `items` so the
-  // reference only changes when the data actually changes.
   if (items !== prevItems) {
     setPrevItems(items)
-    setValues(Object.fromEntries(items.map((item) => [item.key, String(item.value)])))
+    setValues(itemsToValues(items))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -222,17 +227,18 @@ function SourceSettingsForm({ items }: { items: SettingItem[] }) {
 
 function HealthCheckSettingsForm({ items }: { items: SettingItem[] }) {
   const queryClient = useQueryClient()
-  const [values, setValues] = useState<Record<string, string>>({})
+  // Seed from the server values on mount, then reseed when they change (e.g.
+  // after a refetch). Adjusting state during render is React's documented
+  // pattern for this; the parent memoizes `items` so the reference only
+  // changes when the data actually changes.
+  const [values, setValues] = useState<Record<string, string>>(() => itemsToValues(items))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [prevItems, setPrevItems] = useState(items)
 
-  // Reseed when the server values change. Adjusting state during render is
-  // React's documented pattern for this; the parent memoizes `items` so the
-  // reference only changes when the data actually changes.
   if (items !== prevItems) {
     setPrevItems(items)
-    setValues(Object.fromEntries(items.map((item) => [item.key, String(item.value)])))
+    setValues(itemsToValues(items))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
