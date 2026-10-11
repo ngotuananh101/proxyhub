@@ -256,8 +256,10 @@ QUEUE_RESULT_BACKEND=redis://127.0.0.1:6379/2
 # point at a Redis already running on the host (the name resolves via the
 # extra_hosts entry in docker-compose.yml), or at an external Redis (e.g.
 # Aiven) — required when deploying with docker-compose.external.yml.
-# DOCKER_QUEUE_BROKER_URL=redis://host.docker.internal:6379/1
-# DOCKER_QUEUE_RESULT_BACKEND=redis://host.docker.internal:6379/2
+# For TLS Redis use rediss://; ssl_cert_reqs=required is added automatically
+# when absent (override by appending ?ssl_cert_reqs=none to opt out of verify).
+# DOCKER_QUEUE_BROKER_URL=rediss://default:password@your-redis.aivencloud.com:13601/1
+# DOCKER_QUEUE_RESULT_BACKEND=rediss://default:password@your-redis.aivencloud.com:13601/2
 
 #--------------------------------------------------
 # Auth (JWT)
@@ -429,6 +431,7 @@ The script is idempotent — tables that already contain rows are skipped, so it
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Celery worker crashes on Windows              | Celery does not support Windows with the default pool. Use Docker Compose (recommended) or `--pool=threads`.               |
 | `ConnectionError: redis://127.0.0.1:6379`     | Redis is not running. Start Redis (`redis-server`) or verify container `proxyhub-redis` is running.                         |
+| `ValueError: A rediss:// URL must have parameter ssl_cert_reqs` (worker/beat) | Fixed in code: `rediss://` URLs get `ssl_cert_reqs=required` automatically. If you still see it, ensure the URL is not overridden somewhere without the parameter. |
 | `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or the `DB_*` variables are wrong. In Docker, verify container `proxyhub-postgres` is healthy.        |
 | Port 5173 or 8899 already in use              | Port conflict on host. Change `FRONTEND_PORT` or `GATEWAY_PORT` in `.env`.                                                   |
 | `database is locked` (SQLite only)            | Only relevant if you kept SQLite. FastAPI and Celery write concurrently; WAL mode and `busy_timeout` are enabled by default. Switching to PostgreSQL removes this class of error. |

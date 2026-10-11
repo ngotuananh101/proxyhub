@@ -1,7 +1,7 @@
 # tests/test_config.py
 import pytest
 
-from app.core.config import Settings, build_db_url, validate_secrets
+from app.core.config import Settings, build_db_url, build_redis_url, validate_secrets
 
 
 def test_settings_defaults():
@@ -118,6 +118,68 @@ def test_build_db_url_rejects_unknown_connection():
     s = Settings(_env_file=None, DB_CONNECTION="mysql")
     with pytest.raises(ValueError, match="mysql"):
         build_db_url(s)
+
+
+# --- build_redis_url: rediss:// needs ssl_cert_reqs for the Celery backend ---
+
+
+def test_build_redis_url_leaves_plain_redis_untouched():
+    assert (
+        build_redis_url("redis://127.0.0.1:6379/1")
+        == "redis://127.0.0.1:6379/1"
+    )
+
+
+def test_build_redis_url_adds_ssl_cert_reqs_to_rediss():
+    assert (
+        build_redis_url("rediss://default:pw@host:13601/1")
+        == "rediss://default:pw@host:13601/1?ssl_cert_reqs=required"
+    )
+
+
+def test_build_redis_url_keeps_existing_ssl_cert_reqs():
+    url = "rediss://default:pw@host:13601/1?ssl_cert_reqs=none"
+    assert build_redis_url(url) == url
+
+
+def test_build_redis_url_preserves_other_query_params():
+    assert (
+        build_redis_url("rediss://h:13601/1?ssl_check_hostname=false")
+        == "rediss://h:13601/1?ssl_check_hostname=false&ssl_cert_reqs=required"
+    )
+
+
+def test_build_redis_url_defaults_ssl_cert_reqs_for_backend(monkeypatch):
+    monkeypatch.delenv("QUEUE_BROKER_URL", raising=False)
+    monkeypatch.delenv("QUEUE_RESULT_BACKEND", raising=False)
+    s = Settings(
+        _env_file=None,
+        APP_KEY="abc",
+        INTERNAL_API_KEY="key",
+        QUEUE_BROKER_URL="rediss://default:pw@host:13601/1",
+        QUEUE_RESULT_BACKEND="rediss://default:pw@host:13601/2",
+    )
+    assert s.redis_broker_url.endswith("?ssl_cert_reqs=required")
+    assert s.redis_result_backend.endswith("?ssl_cert_reqs=required")
+    # Plain redis must not be rewritten.
+    plain = Settings(
+        _env_file=None,
+        APP_KEY="abc",
+        INTERNAL_API_KEY="key",
+        QUEUE_BROKER_URL="redis://127.0.0.1:6379/1",
+    )
+    assert plain.redis_broker_url == "redis://127.0.0.1:6379/1"
+
+
+def test_celery_backend_accepts_normalized_rediss_url(monkeypatch):
+    # Regression: a bare rediss:// URL makes the Celery redis *backend* raise
+    # "A rediss:// URL must have parameter ssl_cert_reqs". The normalized URL
+    # must construct a backend without error.
+    from celery import Celery
+
+    url = build_redis_url("rediss://default:pw@host:13601/2")
+    app = Celery("probe", broker=url, backend=url)
+    assert app.backend is not None  # must not raise
 
 
 def test_queue_and_health_check_defaults(monkeypatch):

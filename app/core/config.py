@@ -1,4 +1,10 @@
-from urllib.parse import quote_plus
+from urllib.parse import (
+    parse_qsl,
+    quote_plus,
+    urlencode,
+    urlsplit,
+    urlunsplit,
+)
 
 from pydantic_settings import BaseSettings
 
@@ -32,6 +38,16 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
+    @property
+    def redis_broker_url(self) -> str:
+        """QUEUE_BROKER_URL, normalized for TLS (see build_redis_url)."""
+        return build_redis_url(self.QUEUE_BROKER_URL)
+
+    @property
+    def redis_result_backend(self) -> str:
+        """QUEUE_RESULT_BACKEND, normalized for TLS (see build_redis_url)."""
+        return build_redis_url(self.QUEUE_RESULT_BACKEND)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
@@ -60,6 +76,31 @@ def build_db_url(s: Settings) -> str:
             url = f"{url}?sslmode={s.DB_SSLMODE}"
         return url
     raise ValueError(f"Unsupported DB_CONNECTION: {s.DB_CONNECTION!r}")
+
+
+def build_redis_url(url: str) -> str:
+    """Normalize a Redis URL for the Celery/redis clients.
+
+    ``rediss://`` (TLS) URLs must carry ``ssl_cert_reqs`` or the Celery redis
+    *backend* raises at startup ("A rediss:// URL must have parameter
+    ssl_cert_reqs..."), while kombu's broker merely warns. Add the parameter
+    (default ``required``) when absent so every client — broker, result
+    backend, pub/sub relay, and the worker lock — sees a consistent URL.
+
+    Plain ``redis://`` URLs and any URL that already sets ``ssl_cert_reqs``
+    are returned unchanged.
+    """
+    parts = urlsplit(url)
+    if parts.scheme != "rediss":
+        return url
+    # Parse the query without re-encoding the rest of the URL.
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    if any(key == "ssl_cert_reqs" for key, _ in query):
+        return url
+    query.append(("ssl_cert_reqs", "required"))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 # Placeholder values that must never reach a running deployment.
