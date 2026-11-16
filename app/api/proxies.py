@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
 from app.api.deps import get_active_tenant_id, get_current_user
@@ -60,7 +61,14 @@ def create_proxy(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proxy already exists")
     proxy = Proxy(**body.model_dump(), tenant_id=tenant_id)
     session.add(proxy)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # The SELECT above cannot lock: two concurrent creates for the same
+        # endpoint both pass it, and the unique constraint rejects the loser.
+        # That is the same conflict as the pre-check, not a server error.
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proxy already exists")
     session.refresh(proxy)
     return _proxy_to_response(proxy)
 
@@ -191,7 +199,13 @@ def update_proxy(
         setattr(proxy, key, value)
     proxy.updated_at = datetime.now(timezone.utc)
     session.add(proxy)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # A concurrent update can claim the new endpoint between the check
+        # above and this commit; the constraint turns that into the same 409.
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proxy already exists")
     session.refresh(proxy)
     return _proxy_to_response(proxy)
 

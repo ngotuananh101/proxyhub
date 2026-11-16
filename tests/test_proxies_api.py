@@ -322,3 +322,29 @@ def test_update_proxy_port_valid(client, auth_headers):
     assert resp.status_code == 200
     assert resp.json()["port"] == 9090
 
+
+
+def test_create_proxy_concurrent_duplicate_returns_409(client, auth_headers):
+    """The pre-check SELECT cannot lock; the losing concurrent insert must map
+    to the same 409 as the sequential duplicate, not to a 500."""
+    from unittest.mock import patch
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.api import proxies as proxies_api
+
+    real_commit = Session.commit
+
+    def _commit_then_duplicate(self):
+        real_commit(self)
+        # Simulate the other request winning the race: the row now exists.
+        raise IntegrityError("INSERT INTO proxies", {}, Exception("unique"))
+
+    with patch.object(proxies_api.Session, "commit", _commit_then_duplicate):
+        resp = client.post(
+            "/api/proxies",
+            json={"scheme": "http", "host": "9.9.9.9", "port": 80},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Proxy already exists"
