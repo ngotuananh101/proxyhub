@@ -18,12 +18,12 @@ vi.mock('../hooks/useRealtime', () => ({
 }))
 vi.mock('../api/logs')
 
-function logEvent(id: number): RealtimeEvent {
+function logEvent(id: number, tenantId = 1): RealtimeEvent {
   return {
     topic: 'logs',
     data: {
       id,
-      tenant_id: 1,
+      tenant_id: tenantId,
       created_at: '2026-01-01T00:00:00Z',
       method: 'GET',
       host: 'example.com',
@@ -99,7 +99,10 @@ describe('LogsPage realtime handling', () => {
     await waitFor(() => expect(listener).toBeDefined())
     await screen.findByText('No requests found')
 
-    vi.useFakeTimers()
+    // Real timers: spying on setTimeout while vitest's fake clock is installed
+    // leaves the fake wrapper on `globalThis` after it is restored, and every
+    // later `waitFor` hangs. The flush is a 0ms timer and nothing below yields,
+    // so the real clock is enough.
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
     const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
 
@@ -113,5 +116,60 @@ describe('LogsPage realtime handling', () => {
     // Without the cleanup the timer would survive the unmount and call
     // setState on a component that no longer exists.
     expect(clearSpy).toHaveBeenCalledWith(flushHandle)
+  })
+
+  it('does not prepend another tenant\'s log', async () => {
+    renderPage()
+    await waitFor(() => expect(listener).toBeDefined())
+    await screen.findByText('No requests found')
+
+    // The flush is a 0ms timer, so wait on the DOM rather than on a clock:
+    // fake timers here would leak a pending timer into the next test.
+    listener?.(logEvent(1, 2))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByText(/example\.com/)).not.toBeInTheDocument()
+
+    listener?.(logEvent(2, 1))
+    expect(await screen.findByText(/example\.com/)).toBeInTheDocument()
+  })
+
+  it('refetches instead of prepending when no tenant is resolved', async () => {
+    // A non-admin never loads the tenant list, so there is no id to compare
+    // the event against; prepending would show another tenant's requests.
+    // This test needs real timers: waitFor polls with them.
+    vi.useRealTimers()
+    localStorage.setItem('access_token', 'fake-token')
+    localStorage.removeItem('selected_tenant_id')
+    vi.spyOn(tenantsApi, 'listTenants')
+    vi.spyOn(authApi, 'getMe').mockResolvedValue({
+      id: 2, username: 'alice', is_admin: false, email: null,
+    })
+    vi.mocked(logsApi.fetchLogs).mockResolvedValue({
+      items: [], total: 0, page: 1, size: 20,
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <BrowserRouter>
+            <LogsPage />
+          </BrowserRouter>
+        </TenantProvider>
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(listener).toBeDefined())
+    await screen.findByText('No requests found')
+
+    invalidateSpy.mockClear()
+    listener?.(logEvent(1, 1))
+
+    expect(screen.queryByText(/example\.com/)).not.toBeInTheDocument()
+    // Real timers here: the debounce is 1s and fake timers leak between
+    // tests that unmount a component with a pending timer.
+    await waitFor(
+      () => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['logs'] }),
+      { timeout: 3000 }
+    )
   })
 })

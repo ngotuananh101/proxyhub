@@ -188,7 +188,12 @@ export default function LogsPage() {
 
   useRealtime((event) => {
     if (event.topic !== 'logs') return
-    if (!liveRef.current) {
+    // The server scopes the `logs` feed by membership, but the filter stays as
+    // a second line of defence (and for older servers). With no tenant
+    // resolved — a non-admin never gets the tenant list, which is admin-only —
+    // there is nothing to compare against, so fall back to the debounced
+    // refetch, whose result the API scopes server-side.
+    if (!liveRef.current || activeTenantIdRef.current == null) {
       if (invalidateTimerRef.current) return
       invalidateTimerRef.current = setTimeout(() => {
         invalidateTimerRef.current = undefined
@@ -197,8 +202,8 @@ export default function LogsPage() {
       return
     }
     const log = event.data as unknown as LogItem
-    // Only prepend log if it matches active tenant (or if tenant_id is not specified)
-    if (log.tenant_id && activeTenantIdRef.current && log.tenant_id !== activeTenantIdRef.current) {
+    const tenantId = activeTenantIdRef.current
+    if (log.tenant_id != null && log.tenant_id !== tenantId) {
       return
     }
     bufferRef.current.push(log)
