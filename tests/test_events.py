@@ -291,3 +291,95 @@ class TestWebSocketEndpoint:
             with client.websocket_connect("/ws/events", subprotocols=["garbage"]):
                 pass
         assert excinfo.value.code == 4401
+
+
+class TestTenantScopedBroadcast:
+    """A tenant's request logs must not reach another tenant's socket.
+
+    The relay fans every `logs` event out to every connected client; the UI
+    filter runs too late, after the host, path and client IP are already on the
+    wire.
+    """
+
+    def _ws(self):
+        return FakeWebSocket()
+
+    async def test_member_only_receives_their_tenants_logs(self):
+        m = type(manager)()
+        scoped, other = self._ws(), self._ws()
+        await m.connect(scoped, tenant_scope={1})
+        await m.connect(other, tenant_scope={2})
+
+        await m.broadcast("logs", {"tenant_id": 1, "id": 1})
+        assert scoped.sent == [{"topic": "logs", "data": {"tenant_id": 1, "id": 1}}]
+        assert other.sent == []
+
+    async def test_admin_sees_every_tenant(self):
+        m = type(manager)()
+        admin = self._ws()
+        await m.connect(admin, tenant_scope=None)
+
+        await m.broadcast("logs", {"tenant_id": 1, "id": 1})
+        await m.broadcast("logs", {"tenant_id": 2, "id": 2})
+        assert [e["data"]["id"] for e in admin.sent] == [1, 2]
+
+    async def test_unscoped_log_reaches_only_admins(self):
+        m = type(manager)()
+        admin, member = self._ws(), self._ws()
+        await m.connect(admin, tenant_scope=None)
+        await m.connect(member, tenant_scope={1})
+
+        await m.broadcast("logs", {"tenant_id": None, "id": 1})
+        assert [e["data"]["id"] for e in admin.sent] == [1]
+        assert member.sent == []
+
+    async def test_non_log_topics_are_not_filtered(self):
+        # `stats` carries no tenant id and the dashboard aggregates it.
+        m = type(manager)()
+        member = self._ws()
+        await m.connect(member, tenant_scope={1})
+        await m.broadcast("stats", {"total": 3})
+        assert member.sent == [{"topic": "stats", "data": {"total": 3}}]
+
+    async def test_disconnect_drops_the_scope(self):
+        m = type(manager)()
+        ws = self._ws()
+        await m.connect(ws, tenant_scope={1})
+        m.disconnect(ws)
+        assert m._tenant_scopes == {}
+
+
+def test_websocket_scope_matches_memberships(client, engine):
+    """A member connects with exactly their membership set, an admin with all."""
+    from app.models.tenant import Tenant, TenantMembership
+
+    with Session(engine) as session:
+        tenant = Tenant(name="Acme", slug="acme")
+        session.add(tenant)
+        session.commit()
+        session.refresh(tenant)
+        tenant_id = tenant.id
+
+        member = User(
+            username="scoped-member", hashed_password=hash_password("pw"), is_admin=False
+        )
+        session.add(member)
+        session.commit()
+        session.refresh(member)
+        session.add(TenantMembership(tenant_id=tenant_id, user_id=member.id, role="member"))
+        session.commit()
+        member_token = create_access_token({"sub": str(member.id)})
+
+        admin = User(
+            username="scoped-admin", hashed_password=hash_password("pw"), is_admin=True
+        )
+        session.add(admin)
+        session.commit()
+        session.refresh(admin)
+        admin_token = create_access_token({"sub": str(admin.id)})
+
+    with client.websocket_connect("/ws/events", subprotocols=[member_token]):
+        assert manager._tenant_scopes[manager.active[-1]] == {tenant_id}
+
+    with client.websocket_connect("/ws/events", subprotocols=[admin_token]):
+        assert manager._tenant_scopes[manager.active[-1]] is None

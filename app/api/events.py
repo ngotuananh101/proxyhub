@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.database import get_session
 from app.core.security import decode_access_token
+from app.models.tenant import TenantMembership
 from app.models.user import User
 from app.services.events import manager
 
@@ -54,13 +55,29 @@ async def events_websocket(
         await websocket.close(code=4401)
         return
 
+    # Resolve the tenant scope before the session is released. A non-admin sees
+    # only the tenants they belong to; a super admin sees everything and needs
+    # the unscoped feed (the tenant switcher would otherwise show one tenant's
+    # logs for every other tenant). An admin with no membership still gets the
+    # default tenant via `get_active_tenant_id`, but the feed must not depend on
+    # a request header, so use the same membership set semantics.
+    if user.is_admin:
+        tenant_scope: set[int] | None = None
+    else:
+        tenant_scope = {
+            m.tenant_id
+            for m in session.exec(
+                select(TenantMembership).where(TenantMembership.user_id == user.id)
+            ).all()
+        }
+
     # Release the pooled connection before the socket starts streaming. A
     # WebSocket lives for hours; holding the dependency's Session for that long
     # pins one connection per client until the pool is exhausted. The
     # dependency's `with` block tolerates this second close.
     session.close()
 
-    await manager.connect(websocket, subprotocol=echo)
+    await manager.connect(websocket, subprotocol=echo, tenant_scope=tenant_scope)
     try:
         while True:
             # Keep the connection alive; client messages are ignored.

@@ -19,8 +19,18 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         self.active: list[WebSocket] = []
+        # Tenant ids each socket may see. `None` means every tenant (a super
+        # admin), an empty set means none. Without this, every authenticated
+        # socket received every tenant's request logs: host, path and client IP
+        # of other tenants' traffic, which no UI filter can undo.
+        self._tenant_scopes: dict[WebSocket, set[int] | None] = {}
 
-    async def connect(self, websocket: WebSocket, subprotocol: str | None = None) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        subprotocol: str | None = None,
+        tenant_scope: set[int] | None = None,
+    ) -> None:
         """Accept a client, echoing `subprotocol` when one was offered.
 
         Echoing is required whenever the client proposed a subprotocol: browsers
@@ -28,15 +38,28 @@ class ConnectionManager:
         """
         await websocket.accept(subprotocol=subprotocol)
         self.active.append(websocket)
+        self._tenant_scopes[websocket] = tenant_scope
 
     def disconnect(self, websocket: WebSocket) -> None:
         if websocket in self.active:
             self.active.remove(websocket)
+        self._tenant_scopes.pop(websocket, None)
+
+    def _may_see(self, websocket: WebSocket, payload: dict[str, Any]) -> bool:
+        scope = self._tenant_scopes.get(websocket)
+        if scope is None:
+            return True
+        tenant_id = payload.get("tenant_id")
+        # An unscoped log predates tenant tracking; only all-tenant clients
+        # (scope is None) see it.
+        return tenant_id is not None and tenant_id in scope
 
     async def broadcast(self, topic: str, payload: dict[str, Any]) -> None:
         message = {"topic": topic, "data": payload}
         dead: list[WebSocket] = []
         for ws in self.active:
+            if topic == "logs" and not self._may_see(ws, payload):
+                continue
             try:
                 await ws.send_json(message)
             except Exception:
