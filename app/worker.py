@@ -99,17 +99,17 @@ def _broadcast_stats(session: Session) -> None:
     """Push fresh summary counts to connected dashboard clients."""
     from sqlmodel import func
 
+    # One GROUP BY instead of four COUNT(*) scans: the proxy table holds tens
+    # of thousands of rows and this runs after every health check cycle.
+    rows = session.exec(
+        select(Proxy.status, func.count(Proxy.id)).group_by(Proxy.status)
+    ).all()
+    counts = {status: count for status, count in rows}
     stats = {
-        "total": session.exec(select(func.count(Proxy.id))).one(),
-        "alive": session.exec(
-            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.ALIVE)
-        ).one(),
-        "dead": session.exec(
-            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.DEAD)
-        ).one(),
-        "unknown": session.exec(
-            select(func.count(Proxy.id)).where(Proxy.status == ProxyStatus.UNKNOWN)
-        ).one(),
+        "total": sum(counts.values()),
+        "alive": counts.get(ProxyStatus.ALIVE, 0),
+        "dead": counts.get(ProxyStatus.DEAD, 0),
+        "unknown": counts.get(ProxyStatus.UNKNOWN, 0),
     }
     broadcast_sync("stats", stats)
 

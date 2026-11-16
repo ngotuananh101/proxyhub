@@ -91,6 +91,43 @@ def test_create_duplicate_username_in_tenant_fails(client, engine):
     assert resp2.status_code == 409
 
 
+def test_basic_username_is_unique_across_tenants(client, engine):
+    # Gateway auth looks a basic credential up by username alone (the proxy has
+    # no tenant context), so two tenants sharing a username would make the
+    # match ambiguous.
+    with Session(engine) as session:
+        user = User(
+            username="admin-shared",
+            email="shared@test.com",
+            hashed_password=hash_password("pw"),
+            is_admin=True,
+        )
+        session.add(user)
+        tenant_a = Tenant(name="Tenant A", slug="t-a-shared")
+        tenant_b = Tenant(name="Tenant B", slug="t-b-shared")
+        session.add(tenant_a)
+        session.add(tenant_b)
+        session.commit()
+        session.refresh(user)
+        session.refresh(tenant_a)
+        session.refresh(tenant_b)
+
+    r1 = client.post(
+        "/api/gateway-credentials",
+        json={"name": "a", "auth_mode": "basic", "username": "shared-user"},
+        headers=auth_headers(user, tenant_a.id),
+    )
+    assert r1.status_code == 201
+
+    r2 = client.post(
+        "/api/gateway-credentials",
+        json={"name": "b", "auth_mode": "basic", "username": "shared-user"},
+        headers=auth_headers(user, tenant_b.id),
+    )
+    assert r2.status_code == 409
+    assert "shared-user" in r2.json()["detail"]
+
+
 def test_create_ip_whitelist_credential(client, engine):
     with Session(engine) as session:
         user = User(

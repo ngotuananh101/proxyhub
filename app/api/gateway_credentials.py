@@ -1,6 +1,7 @@
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select, update
 
 from app.api.deps import get_active_tenant_id, get_current_user, require_tenant_role
@@ -75,10 +76,12 @@ def create_credential(
             raise HTTPException(status_code=422, detail="Username is required for Basic auth")
         username = body.username.strip()
 
-        # Check unique username per tenant
+        # The proxy presents only a username and password, with no tenant
+        # context, so the gateway resolves credentials by username alone.
+        # A username reused by another tenant would make that lookup ambiguous,
+        # hence the check is global rather than per-tenant.
         existing = session.exec(
             select(GatewayCredential).where(
-                GatewayCredential.tenant_id == tenant_id,
                 GatewayCredential.auth_mode == AuthMode.BASIC,
                 GatewayCredential.username == username,
             )
@@ -86,7 +89,7 @@ def create_credential(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Username '{username}' already exists for this tenant",
+                detail=f"Username '{username}' already exists",
             )
 
         generated_pw = secrets.token_urlsafe(16)
@@ -114,7 +117,16 @@ def create_credential(
         is_active=True,
     )
     session.add(cred)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # Two concurrent creates can both pass the check above; the unique
+        # index on (auth_mode, username) is what actually enforces this.
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Username '{username}' already exists",
+        )
     session.refresh(cred)
 
     resp = _to_response(cred)

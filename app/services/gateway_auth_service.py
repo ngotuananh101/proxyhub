@@ -137,6 +137,10 @@ def authenticate_gateway_request(
     1. Basic auth attempted first: find active basic cred matching username, verify password.
     2. IP whitelist fallback: iterate active ip_whitelist creds, check CIDR match against client_ip.
     Returns matched GatewayCredential or None.
+
+    Basic-auth usernames are unique across all tenants (enforced on create), so
+    step 1 resolves to at most one candidate even though the proxy carries no
+    tenant context.
     """
     # Step 1: Basic auth
     if username and password:

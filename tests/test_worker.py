@@ -342,6 +342,44 @@ class TestStatsBroadcast:
             "stats", {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
         )
 
+    def test_stats_come_from_a_single_query(self, engine):
+        # Four COUNT(*) queries force four full scans of a table that can hold
+        # tens of thousands of rows; one GROUP BY returns the same numbers.
+        from sqlalchemy import event
+
+        from app.worker import _broadcast_stats
+
+        _seed(
+            engine,
+            [
+                Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE),
+                Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD),
+                Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.DEAD),
+            ],
+        )
+
+        proxy_selects: list[str] = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            normalized = statement.lstrip().upper()
+            if normalized.startswith(("SELECT", "WITH")) and "FROM PROXIES" in normalized:
+                proxy_selects.append(statement)
+
+        event.listen(engine, "before_cursor_execute", _record)
+        try:
+            with patch("app.worker.broadcast_sync") as mock_broadcast, Session(
+                engine
+            ) as session:
+                _broadcast_stats(session)
+        finally:
+            event.remove(engine, "before_cursor_execute", _record)
+
+        mock_broadcast.assert_called_once_with(
+            "stats", {"total": 3, "alive": 1, "dead": 2, "unknown": 0}
+        )
+        assert len(proxy_selects) == 1
+        assert "GROUP BY" in proxy_selects[0].upper()
+
 
 class TestTaskLocking:
     def test_check_skips_when_lock_held(self, engine, _fake_locks):
