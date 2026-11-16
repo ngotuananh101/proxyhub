@@ -89,12 +89,20 @@ class TestImportSourceText:
 
 
 class TestPurgeOldDeadProxies:
-    def _seed(self, session, status: ProxyStatus, age_days: float, host: str) -> Proxy:
+    def _seed(
+        self,
+        session,
+        status: ProxyStatus,
+        age_days: float,
+        host: str,
+        tenant_id: int | None = None,
+    ) -> Proxy:
         proxy = Proxy(
             scheme="http",
             host=host,
             port=80,
             status=status,
+            tenant_id=tenant_id,
             updated_at=datetime.now(timezone.utc) - timedelta(days=age_days),
         )
         session.add(proxy)
@@ -105,16 +113,47 @@ class TestPurgeOldDeadProxies:
         old_dead = self._seed(session, ProxyStatus.DEAD, 8, "9.9.9.1")
         self._seed(session, ProxyStatus.DEAD, 1, "9.9.9.2")  # recent dead kept
         self._seed(session, ProxyStatus.ALIVE, 30, "9.9.9.3")  # alive never purged
+        # Bulk delete bypasses the ORM identity map, so read the id up front.
+        old_dead_id = old_dead.id
         removed = purge_old_dead_proxies(session, retention_days=7)
         assert removed == 1
         remaining = session.exec(select(Proxy)).all()
-        assert old_dead.id not in {p.id for p in remaining}
+        assert old_dead_id not in {p.id for p in remaining}
         assert len(remaining) == 2
 
     def test_disabled_when_retention_is_zero(self, session):
         self._seed(session, ProxyStatus.DEAD, 30, "9.9.9.1")
         assert purge_old_dead_proxies(session, retention_days=0) == 0
         assert len(session.exec(select(Proxy)).all()) == 1
+
+    def test_scoped_to_one_tenant(self, session):
+        self._seed(session, ProxyStatus.DEAD, 8, "9.9.9.1", tenant_id=1)
+        self._seed(session, ProxyStatus.DEAD, 8, "9.9.9.2", tenant_id=2)
+
+        assert purge_old_dead_proxies(session, retention_days=7, tenant_id=1) == 1
+        assert [p.host for p in session.exec(select(Proxy)).all()] == ["9.9.9.2"]
+
+
+class TestImportChunking:
+    def test_imports_more_keys_than_a_single_statement_allows(self, session):
+        count = 1200
+        text = "\n".join(
+            f"10.{i // 250}.{i % 250}.{i // 62500}:{8000 + i % 1000}"
+            for i in range(count)
+        )
+
+        imported, duplicates = import_source_text(session, text, tenant_id=1)
+
+        assert (imported, duplicates) == (count, 0)
+        assert len(session.exec(select(Proxy)).all()) == count
+
+    def test_reimport_of_large_list_is_all_duplicates(self, session):
+        text = "\n".join(f"10.9.{i // 250}.{i % 250}:90{i % 100}" for i in range(600))
+
+        import_source_text(session, text, tenant_id=1)
+        imported, duplicates = import_source_text(session, text, tenant_id=1)
+
+        assert (imported, duplicates) == (0, 600)
 
 
 class TestIsDue:

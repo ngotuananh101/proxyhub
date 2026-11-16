@@ -32,35 +32,29 @@ def parse_proxy_line(line: str) -> dict | None:
 
 
 def import_proxies(session: Session, text: str, tenant_id: int | None = None) -> ImportResult:
-    imported = 0
-    duplicates = 0
+    """Import a pasted list. Returns counts plus the lines that did not parse.
+
+    Parsing stays per-line so invalid lines can be reported back to the user;
+    the dedupe/insert step is shared with the source fetcher, which does it in
+    bulk instead of one SELECT per line.
+    """
+    parsed: list[dict] = []
     invalid: list[InvalidLine] = []
 
     for line in text.strip().splitlines():
         line = line.strip()
         if not line:
             continue
-        parsed = parse_proxy_line(line)
-        if parsed is None:
+        item = parse_proxy_line(line)
+        if item is None:
             invalid.append(InvalidLine(line=line, reason="Invalid proxy URL format"))
             continue
+        parsed.append(item)
 
-        existing = session.exec(
-            select(Proxy).where(
-                Proxy.tenant_id == tenant_id,
-                Proxy.scheme == parsed["scheme"],
-                Proxy.host == parsed["host"],
-                Proxy.port == parsed["port"],
-            )
-        ).first()
-        if existing:
-            duplicates += 1
-            continue
+    # Imported lazily: source_service imports parse_proxy_line from this module.
+    from app.services.source_service import upsert_parsed
 
-        proxy = Proxy(**parsed, tenant_id=tenant_id)
-        session.add(proxy)
-        imported += 1
-
+    imported, duplicates = upsert_parsed(session, parsed, tenant_id)
     session.commit()
     return ImportResult(imported=imported, duplicates=duplicates, invalid=invalid)
 

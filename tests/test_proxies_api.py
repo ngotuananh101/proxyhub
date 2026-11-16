@@ -114,7 +114,8 @@ def test_check_all_dispatches_task(client, auth_headers):
     data = resp.json()
     assert data["detail"] == "Health check started"
     assert data["task_id"] == "fake-task-id"
-    mock_delay.assert_called_once()
+    # A manual trigger must bypass the interval gate, else the button is a no-op.
+    mock_delay.assert_called_once_with(force=True)
 
 
 def test_check_all_requires_auth(client):

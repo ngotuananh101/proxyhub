@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import tuple_
+from sqlalchemy import delete, tuple_
 from sqlmodel import Session, col, select
 
 from app.models.proxy import Proxy, ProxyStatus
@@ -13,6 +13,11 @@ from app.services.proxy_service import parse_proxy_line
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_BYTES = 2 * 1024 * 1024  # 2MB
+
+# A source can list tens of thousands of proxies. SQLite caps a statement at
+# 32766 bound parameters and older builds at 999, so the dedupe lookup is
+# chunked: 500 keys x 3 columns stays well under every dialect's limit.
+EXISTING_LOOKUP_CHUNK = 500
 
 
 def normalize_line(line: str) -> str | None:
@@ -29,15 +34,61 @@ def normalize_line(line: str) -> str | None:
     return line
 
 
+def upsert_parsed(
+    session: Session, parsed: list[dict], tenant_id: int | None
+) -> tuple[int, int]:
+    """Insert parsed proxies that are not already stored. Returns (imported, duplicates).
+
+    Existing rows are looked up in chunks of `EXISTING_LOOKUP_CHUNK` instead of
+    one SELECT per line: thousands of round-trips would keep the write
+    transaction open long enough to starve the API's busy_timeout, and a single
+    unbounded IN clause overflows the backend's bound-parameter limit.
+    """
+    if not parsed:
+        return 0, 0
+
+    existing_map: dict[tuple[str, str, int], Proxy] = {}
+    keys = [(item["scheme"], item["host"], item["port"]) for item in parsed]
+    for start in range(0, len(keys), EXISTING_LOOKUP_CHUNK):
+        chunk = keys[start : start + EXISTING_LOOKUP_CHUNK]
+        query = select(Proxy).where(
+            tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(chunk)
+        )
+        if tenant_id is not None:
+            query = query.where(Proxy.tenant_id == tenant_id)
+        for proxy in session.exec(query).all():
+            existing_map[(proxy.scheme, proxy.host, proxy.port)] = proxy
+
+    imported = 0
+    duplicates = 0
+    now = datetime.now(timezone.utc)
+    inserted: set[tuple[str, str, int]] = set()
+    for item in parsed:
+        key = (item["scheme"], item["host"], item["port"])
+        # A key can repeat within one payload (manual import of a pasted list).
+        # Without this guard both copies would be queued for INSERT.
+        if key in inserted:
+            duplicates += 1
+            continue
+        if key in existing_map:
+            duplicates += 1
+            proxy = existing_map[key]
+            if proxy.status == ProxyStatus.DEAD:
+                proxy.status = ProxyStatus.UNKNOWN
+                proxy.updated_at = now
+                session.add(proxy)
+            continue
+        session.add(Proxy(**item, tenant_id=tenant_id))
+        inserted.add(key)
+        imported += 1
+
+    return imported, duplicates
+
+
 def import_source_text(
     session: Session, text: str, tenant_id: int | None = None
 ) -> tuple[int, int]:
-    """Import proxies from fetched text. Returns (imported, duplicates).
-
-    Existing proxies are looked up with a single bulk query instead of one
-    SELECT per line: thousands of round-trips would keep the write
-    transaction open long enough to starve the API's busy_timeout.
-    """
+    """Import proxies from fetched text. Returns (imported, duplicates)."""
     parsed: list[dict] = []
     seen: set[tuple[str, str, int]] = set()
 
@@ -54,54 +105,31 @@ def import_source_text(
         seen.add(key)
         parsed.append(item)
 
-    if not parsed:
-        session.commit()
-        return 0, 0
-
-    keys = [(item["scheme"], item["host"], item["port"]) for item in parsed]
-    query = select(Proxy).where(
-        tuple_(Proxy.scheme, Proxy.host, Proxy.port).in_(keys)
-    )
-    if tenant_id is not None:
-        query = query.where(Proxy.tenant_id == tenant_id)
-    existing_proxies = session.exec(query).all()
-    existing_map = {(p.scheme, p.host, p.port): p for p in existing_proxies}
-
-    imported = 0
-    duplicates = 0
-    now = datetime.now(timezone.utc)
-    for item in parsed:
-        key = (item["scheme"], item["host"], item["port"])
-        if key in existing_map:
-            duplicates += 1
-            proxy = existing_map[key]
-            if proxy.status == ProxyStatus.DEAD:
-                proxy.status = ProxyStatus.UNKNOWN
-                proxy.updated_at = now
-                session.add(proxy)
-            continue
-        session.add(Proxy(**item, tenant_id=tenant_id))
-        imported += 1
-
+    imported, duplicates = upsert_parsed(session, parsed, tenant_id)
     session.commit()
     return imported, duplicates
 
 
-def purge_old_dead_proxies(session: Session, retention_days: float) -> int:
-    """Delete proxies dead for longer than the retention period."""
+def purge_old_dead_proxies(
+    session: Session, retention_days: float, tenant_id: int | None = None
+) -> int:
+    """Delete proxies dead for longer than the retention period.
+
+    Scoped to `tenant_id` when given: a fetch triggered by one tenant must
+    never delete another tenant's proxies.
+    """
     if retention_days <= 0:
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    dead = session.exec(
-        select(Proxy).where(
-            Proxy.status == ProxyStatus.DEAD,
-            col(Proxy.updated_at) < cutoff,
-        )
-    ).all()
-    for proxy in dead:
-        session.delete(proxy)
+    condition = [
+        Proxy.status == ProxyStatus.DEAD,
+        col(Proxy.updated_at) < cutoff,
+    ]
+    if tenant_id is not None:
+        condition.append(Proxy.tenant_id == tenant_id)
+    result = session.exec(delete(Proxy).where(*condition))
     session.commit()
-    return len(dead)
+    return result.rowcount or 0
 
 
 async def _download(url: str, timeout: float) -> str:
@@ -139,7 +167,9 @@ def fetch_and_import(
     try:
         text = asyncio.run(_download(source.url, timeout))
         imported, duplicates = import_source_text(session, text, tenant_id=effective_tenant_id)
-        purged = purge_old_dead_proxies(session, retention_days)
+        purged = purge_old_dead_proxies(
+            session, retention_days, tenant_id=effective_tenant_id
+        )
         status = f"ok: {imported} imported, {duplicates} duplicates"
         if purged:
             status += f", {purged} old dead removed"

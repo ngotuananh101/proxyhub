@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete
 from sqlmodel import Session, col, func, select
 
 from app.api.deps import get_active_tenant_id, get_current_user
@@ -84,7 +85,9 @@ def list_proxies(
         query = query.where(col(Proxy.host).contains(q))
 
     total = session.exec(select(func.count()).select_from(query.subquery())).one()
-    items = session.exec(query.offset((page - 1) * size).limit(size)).all()
+    # Order explicitly: without it the database may return rows in a different
+    # order for each page request, so pagination can repeat or skip proxies.
+    items = session.exec(query.order_by(Proxy.id).offset((page - 1) * size).limit(size)).all()
 
     return ProxyListResponse(
         items=[_proxy_to_response(p) for p in items],
@@ -106,7 +109,9 @@ def import_proxies_endpoint(
 
 @router.post("/check-all", status_code=status.HTTP_202_ACCEPTED)
 def trigger_check_all(_: User = Depends(get_current_user)):
-    result = check_all_proxies.delay()
+    # force=True: a manual "Check now" must run even when the scheduled
+    # interval has not elapsed, otherwise the button is a no-op.
+    result = check_all_proxies.delay(force=True)
     return {"detail": "Health check started", "task_id": result.id}
 
 
@@ -117,13 +122,11 @@ def clear_dead_proxies(
     tenant_id: int = Depends(get_active_tenant_id),
 ):
     """Delete every proxy currently marked dead."""
-    dead = session.exec(
-        select(Proxy).where(Proxy.status == ProxyStatus.DEAD, Proxy.tenant_id == tenant_id)
-    ).all()
-    for proxy in dead:
-        session.delete(proxy)
+    result = session.exec(
+        delete(Proxy).where(Proxy.status == ProxyStatus.DEAD, Proxy.tenant_id == tenant_id)
+    )
     session.commit()
-    return {"deleted": len(dead)}
+    return {"deleted": result.rowcount or 0}
 
 
 @router.get("/{proxy_id}", response_model=ProxyResponse)
@@ -214,8 +217,7 @@ def delete_many_proxies(
     user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_active_tenant_id),
 ):
-    for proxy_id in body.ids:
-        proxy = session.get(Proxy, proxy_id)
-        if proxy and proxy.tenant_id == tenant_id:
-            session.delete(proxy)
+    session.exec(
+        delete(Proxy).where(Proxy.id.in_(body.ids), Proxy.tenant_id == tenant_id)
+    )
     session.commit()
