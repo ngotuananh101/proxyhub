@@ -26,8 +26,15 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Placeholder values that must never reach a running deployment.
-INSECURE_PLACEHOLDERS = {"", "change_me"}
+# Placeholder values that must never reach a running deployment. Any value
+# starting with this prefix counts as unset, so the secrets shipped in
+# .env.example ("change_me_to_a_random_secure_secret_key") are caught too,
+# not just the bare "change_me" fallback baked into Settings.
+INSECURE_PLACEHOLDER_PREFIX = "change_me"
+
+
+def _is_insecure(value: str) -> bool:
+    return not value or value.strip().startswith(INSECURE_PLACEHOLDER_PREFIX)
 
 
 def validate_secrets(s: Settings) -> None:
@@ -40,7 +47,7 @@ def validate_secrets(s: Settings) -> None:
     unset = [
         name
         for name in ("APP_KEY", "INTERNAL_API_KEY")
-        if getattr(s, name) in INSECURE_PLACEHOLDERS
+        if _is_insecure(getattr(s, name))
     ]
     if unset:
         raise RuntimeError(

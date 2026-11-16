@@ -81,6 +81,18 @@ def test_validate_secrets_rejects_placeholders(bad):
         validate_secrets(s)
 
 
+def test_validate_secrets_rejects_env_example_values():
+    # These are verbatim the strings shipped in .env.example; a deployment
+    # that copies it must refuse to boot rather than run with public secrets.
+    s = Settings(
+        _env_file=None,
+        APP_KEY="change_me_to_a_random_secure_secret_key",
+        INTERNAL_API_KEY="change_me_to_a_random_internal_api_key",
+    )
+    with pytest.raises(RuntimeError, match="APP_KEY, INTERNAL_API_KEY"):
+        validate_secrets(s)
+
+
 def test_validate_secrets_names_only_unset_keys():
     s = Settings(
         _env_file=None,
