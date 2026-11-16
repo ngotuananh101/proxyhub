@@ -59,6 +59,17 @@ def _seed(engine, proxies: list[Proxy]) -> list[int]:
         return [p.id for p in proxies]
 
 
+def _seed_tenant(engine, slug: str = "acme") -> int:
+    from app.models.tenant import Tenant
+
+    with Session(engine) as session:
+        tenant = Tenant(name=slug.title(), slug=slug)
+        session.add(tenant)
+        session.commit()
+        session.refresh(tenant)
+        return tenant.id
+
+
 def _set_setting(engine, key: str, value: str) -> None:
     with Session(engine) as session:
         row = session.exec(select(AppSetting).where(AppSetting.key == key)).first()
@@ -310,12 +321,16 @@ class TestStatsBroadcast:
         from app.services.health_service import CheckResult
         from app.worker import check_all_proxies
 
+        tenant_id = _seed_tenant(engine)
         _seed(
             engine,
             [
-                Proxy(scheme="http", host="1.1.1.1", port=80),
-                Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD),
-                Proxy(scheme="http", host="3.3.3.3", port=80),
+                Proxy(scheme="http", host="1.1.1.1", port=80, tenant_id=tenant_id),
+                Proxy(
+                    scheme="http", host="2.2.2.2", port=80,
+                    status=ProxyStatus.DEAD, tenant_id=tenant_id,
+                ),
+                Proxy(scheme="http", host="3.3.3.3", port=80, tenant_id=tenant_id),
             ],
         )
         results = [
@@ -329,18 +344,83 @@ class TestStatsBroadcast:
             check_all_proxies()
 
         mock_broadcast.assert_called_once_with(
-            "stats", {"total": 3, "alive": 1, "dead": 2, "unknown": 0}
+            "stats",
+            {"tenant_id": tenant_id, "total": 3, "alive": 1, "dead": 2, "unknown": 0},
         )
 
     def test_broadcasts_zero_stats_for_empty_pool(self, engine):
         from app.worker import check_all_proxies
 
+        tenant_id = _seed_tenant(engine)
         with patch("app.worker.broadcast_sync") as mock_broadcast:
             check_all_proxies()
 
+        # The tenant asked for a fresh snapshot; a missing event would leave
+        # its dashboard showing the counts from before the pool emptied.
         mock_broadcast.assert_called_once_with(
-            "stats", {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
+            "stats",
+            {"tenant_id": tenant_id, "total": 0, "alive": 0, "dead": 0, "unknown": 0},
         )
+
+    def test_each_tenant_gets_only_its_own_counts(self, engine):
+        from app.worker import _broadcast_stats
+
+        acme = _seed_tenant(engine, "acme")
+        globex = _seed_tenant(engine, "globex")
+        _seed(
+            engine,
+            [
+                Proxy(
+                    scheme="http", host="1.1.1.1", port=80,
+                    status=ProxyStatus.ALIVE, tenant_id=acme,
+                ),
+                Proxy(
+                    scheme="http", host="2.2.2.2", port=80,
+                    status=ProxyStatus.DEAD, tenant_id=acme,
+                ),
+                Proxy(
+                    scheme="http", host="3.3.3.3", port=80,
+                    status=ProxyStatus.DEAD, tenant_id=globex,
+                ),
+            ],
+        )
+
+        with patch("app.worker.broadcast_sync") as mock_broadcast, Session(
+            engine
+        ) as session:
+            _broadcast_stats(session)
+
+        events = {
+            call.args[1]["tenant_id"]: call.args[1]
+            for call in mock_broadcast.call_args_list
+        }
+        assert events[acme] == {
+            "tenant_id": acme, "total": 2, "alive": 1, "dead": 1, "unknown": 0,
+        }
+        assert events[globex] == {
+            "tenant_id": globex, "total": 1, "alive": 0, "dead": 1, "unknown": 0,
+        }
+        assert all(call.args[0] == "stats" for call in mock_broadcast.call_args_list)
+
+    def test_tenant_with_no_proxies_still_gets_a_zero_snapshot(self, engine):
+        from app.worker import _broadcast_stats
+
+        acme = _seed_tenant(engine, "acme")
+        empty = _seed_tenant(engine, "empty")
+        _seed(engine, [Proxy(scheme="http", host="1.1.1.1", port=80, tenant_id=acme)])
+
+        with patch("app.worker.broadcast_sync") as mock_broadcast, Session(
+            engine
+        ) as session:
+            _broadcast_stats(session)
+
+        assert mock_broadcast.call_count == 2
+        empty_event = next(
+            call.args[1]
+            for call in mock_broadcast.call_args_list
+            if call.args[1]["tenant_id"] == empty
+        )
+        assert empty_event["total"] == 0
 
     def test_stats_come_from_a_single_query(self, engine):
         # Four COUNT(*) queries force four full scans of a table that can hold
@@ -349,12 +429,22 @@ class TestStatsBroadcast:
 
         from app.worker import _broadcast_stats
 
+        tenant_id = _seed_tenant(engine)
         _seed(
             engine,
             [
-                Proxy(scheme="http", host="1.1.1.1", port=80, status=ProxyStatus.ALIVE),
-                Proxy(scheme="http", host="2.2.2.2", port=80, status=ProxyStatus.DEAD),
-                Proxy(scheme="http", host="3.3.3.3", port=80, status=ProxyStatus.DEAD),
+                Proxy(
+                    scheme="http", host="1.1.1.1", port=80,
+                    status=ProxyStatus.ALIVE, tenant_id=tenant_id,
+                ),
+                Proxy(
+                    scheme="http", host="2.2.2.2", port=80,
+                    status=ProxyStatus.DEAD, tenant_id=tenant_id,
+                ),
+                Proxy(
+                    scheme="http", host="3.3.3.3", port=80,
+                    status=ProxyStatus.DEAD, tenant_id=tenant_id,
+                ),
             ],
         )
 
@@ -375,7 +465,8 @@ class TestStatsBroadcast:
             event.remove(engine, "before_cursor_execute", _record)
 
         mock_broadcast.assert_called_once_with(
-            "stats", {"total": 3, "alive": 1, "dead": 2, "unknown": 0}
+            "stats",
+            {"tenant_id": tenant_id, "total": 3, "alive": 1, "dead": 2, "unknown": 0},
         )
         assert len(proxy_selects) == 1
         assert "GROUP BY" in proxy_selects[0].upper()

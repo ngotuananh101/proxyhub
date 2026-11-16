@@ -13,6 +13,7 @@ from app.core.config import settings, validate_secrets
 from app.models.proxy import Proxy, ProxyStatus
 from app.models.setting import AppSetting
 from app.models.source import ProxySource
+from app.models.tenant import Tenant
 from app.services import health_service
 from app.services.events import broadcast_sync
 from app.services.log_service import purge_old_request_logs
@@ -96,22 +97,46 @@ def _release_lock(lock) -> None:
 
 
 def _broadcast_stats(session: Session) -> None:
-    """Push fresh summary counts to connected dashboard clients."""
+    """Push fresh per-tenant summary counts to connected dashboard clients.
+
+    `/api/stats/summary` is tenant-scoped, so the realtime payload must be too:
+    one event per tenant carrying that tenant's counts and its `tenant_id`,
+    which the connection manager uses to drop it for sockets outside the
+    tenant. A single global aggregate told every member how many proxies every
+    other tenant had.
+    """
     from sqlmodel import func
+
+    # Start every tenant at zero so a tenant whose pool just emptied still
+    # pushes a fresh snapshot instead of leaving its dashboard on the old
+    # counts. The tenants table is small and this is one indexed scan.
+    per_tenant: dict[int | None, dict[str, int]] = {
+        tenant_id: {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
+        for tenant_id in session.exec(select(Tenant.id)).all()
+    }
 
     # One GROUP BY instead of four COUNT(*) scans: the proxy table holds tens
     # of thousands of rows and this runs after every health check cycle.
+    # Rows with no tenant (a pre-multi-tenant database startup has not adopted
+    # yet) are broadcast with `tenant_id: None`; the connection manager only
+    # delivers those to all-tenant (admin) sockets.
     rows = session.exec(
-        select(Proxy.status, func.count(Proxy.id)).group_by(Proxy.status)
+        select(Proxy.tenant_id, Proxy.status, func.count(Proxy.id)).group_by(
+            Proxy.tenant_id, Proxy.status
+        )
     ).all()
-    counts = {status: count for status, count in rows}
-    stats = {
-        "total": sum(counts.values()),
-        "alive": counts.get(ProxyStatus.ALIVE, 0),
-        "dead": counts.get(ProxyStatus.DEAD, 0),
-        "unknown": counts.get(ProxyStatus.UNKNOWN, 0),
-    }
-    broadcast_sync("stats", stats)
+
+    for tenant_id, status, count in rows:
+        stats = per_tenant.setdefault(
+            tenant_id, {"total": 0, "alive": 0, "dead": 0, "unknown": 0}
+        )
+        stats["total"] += count
+        # `status` loads as the `ProxyStatus` enum; take its value so the
+        # payload keys match `/api/stats/summary`.
+        stats[status.value] += count
+
+    for tenant_id, stats in per_tenant.items():
+        broadcast_sync("stats", {"tenant_id": tenant_id, **stats})
 
 
 def _seconds_since_last_run(session: Session) -> float | None:

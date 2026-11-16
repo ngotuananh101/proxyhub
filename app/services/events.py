@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 CHANNEL = "proxyhub:events"
 
+# Topics whose payload belongs to one tenant. Anything else is broadcast to
+# every socket; keep this closed rather than filtering on `tenant_id` alone so
+# a future unscoped topic cannot be silently swallowed for members.
+SCOPED_TOPICS = frozenset({"logs", "stats"})
+
 
 class ConnectionManager:
     """Tracks connected dashboard WebSocket clients and broadcasts events."""
@@ -50,7 +55,8 @@ class ConnectionManager:
         if scope is None:
             return True
         tenant_id = payload.get("tenant_id")
-        # An unscoped log predates tenant tracking; only all-tenant clients
+        # An event with no tenant predates tenant tracking (legacy rows, or a
+        # proxy whose tenant has not been adopted yet); only all-tenant clients
         # (scope is None) see it.
         return tenant_id is not None and tenant_id in scope
 
@@ -58,7 +64,9 @@ class ConnectionManager:
         message = {"topic": topic, "data": payload}
         dead: list[WebSocket] = []
         for ws in self.active:
-            if topic == "logs" and not self._may_see(ws, payload):
+            # Both topics carry tenant data: a log names the tenant that
+            # proxied the request, a stats event counts one tenant's pool.
+            if topic in SCOPED_TOPICS and not self._may_see(ws, payload):
                 continue
             try:
                 await ws.send_json(message)

@@ -333,13 +333,40 @@ class TestTenantScopedBroadcast:
         assert [e["data"]["id"] for e in admin.sent] == [1]
         assert member.sent == []
 
-    async def test_non_log_topics_are_not_filtered(self):
-        # `stats` carries no tenant id and the dashboard aggregates it.
+    async def test_stats_are_scoped_to_the_members_tenants(self):
+        # `stats` carries one tenant's counts; a member must not learn how
+        # many proxies another tenant has.
+        m = type(manager)()
+        member, other, admin = self._ws(), self._ws(), self._ws()
+        await m.connect(member, tenant_scope={1})
+        await m.connect(other, tenant_scope={2})
+        await m.connect(admin, tenant_scope=None)
+
+        payload = {"tenant_id": 1, "total": 3, "alive": 2, "dead": 1, "unknown": 0}
+        await m.broadcast("stats", payload)
+
+        assert member.sent == [{"topic": "stats", "data": payload}]
+        assert other.sent == []
+        assert admin.sent == [{"topic": "stats", "data": payload}]
+
+    async def test_unscoped_stats_reach_only_admins(self):
+        m = type(manager)()
+        admin, member = self._ws(), self._ws()
+        await m.connect(admin, tenant_scope=None)
+        await m.connect(member, tenant_scope={1})
+
+        await m.broadcast("stats", {"tenant_id": None, "total": 1})
+        assert len(admin.sent) == 1
+        assert member.sent == []
+
+    async def test_unknown_topics_are_not_filtered(self):
+        # Only topics listed in SCOPED_TOPICS carry tenant data; a future
+        # global notice (e.g. "settings changed") must reach every socket.
         m = type(manager)()
         member = self._ws()
         await m.connect(member, tenant_scope={1})
-        await m.broadcast("stats", {"total": 3})
-        assert member.sent == [{"topic": "stats", "data": {"total": 3}}]
+        await m.broadcast("notice", {"message": "restarting"})
+        assert member.sent == [{"topic": "notice", "data": {"message": "restarting"}}]
 
     async def test_disconnect_drops_the_scope(self):
         m = type(manager)()

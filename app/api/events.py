@@ -39,8 +39,10 @@ async def events_websocket(
     or, for older clients, as the `?token=` query parameter — the latter is
     deprecated because it is written to the server access log.
 
-    Topics pushed: `stats` (after each health check cycle) and `logs`
-    (every gateway request).
+    Topics pushed: `stats` (one event per tenant after each health check
+    cycle, carrying that tenant's counts) and `logs` (every gateway request).
+    Both are filtered by the caller's tenant membership; a super admin sees
+    every tenant.
     """
     subprotocol_token, echo = _extract_token(websocket, token)
     try:

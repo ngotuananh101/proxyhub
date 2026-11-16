@@ -93,12 +93,15 @@ export default function ProxiesPage() {
   }
 
   // Refresh stats and the table live as health check results stream in.
-  // Invalidating both queries ensures the active tenant's scoped stats and proxies are refetched.
+  // The server sends one `stats` event per tenant, and a member only receives
+  // their own tenants' events; the check below is a second line of defence (and
+  // covers an admin viewing one tenant while another tenant's pool changes).
   useRealtime((event) => {
-    if (event.topic === 'stats') {
-      queryClient.invalidateQueries({ queryKey: ['stats'] })
-      queryClient.invalidateQueries({ queryKey: ['proxies'] })
-    }
+    if (event.topic !== 'stats') return
+    const eventTenantId = event.data.tenant_id
+    if (tenantId != null && eventTenantId != null && eventTenantId !== tenantId) return
+    queryClient.invalidateQueries({ queryKey: ['stats'] })
+    queryClient.invalidateQueries({ queryKey: ['proxies'] })
   })
 
   const handleCheckAll = async () => {
