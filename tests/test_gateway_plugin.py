@@ -124,11 +124,17 @@ class TestAccessLogPayload:
 
         plugin.handle_client_request(request)
 
-        with patch("app.gateway.plugin._LOG_EXECUTOR.submit") as mock_submit:
+        with patch("app.gateway.plugin._LOG_EXECUTOR.submit") as mock_submit, patch(
+            "app.gateway.plugin.send_access_log"
+        ) as mock_send:
             plugin.on_access_log({"client_ip": "127.0.0.1", "client_port": 10902})
+            assert mock_submit.called
+            # submit_access_log queues a zero-arg wrapper that releases the
+            # queue slot after sending; run it to capture the payload.
+            mock_submit.call_args[0][0]()
 
-        assert mock_submit.called
-        payload = mock_submit.call_args[0][1]
+        assert mock_send.called
+        payload = mock_send.call_args[0][0]
         assert payload["method"] == "GET"
         assert payload["host"] == "httpbin.org"
         assert payload["path"] == "/ip"
@@ -138,3 +144,37 @@ class TestAccessLogPayload:
         assert payload["auth_credential_id"] == 10
         assert payload["auth_status"] == "allowed"
         json.dumps(payload)
+
+
+def test_access_log_drops_when_queue_is_full(monkeypatch):
+    import threading
+
+    import app.gateway.plugin as plugin
+
+    # One slot, held by a task that blocks until released: the second submit
+    # must be refused instead of piling up in the executor queue.
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(plugin, "_LOG_SLOTS", slots)
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def _slow_send(payload):
+        started.set()
+        release.wait(5)
+
+    monkeypatch.setattr(plugin, "send_access_log", _slow_send)
+    try:
+        assert plugin.submit_access_log({"a": 1}) is True
+        assert started.wait(5)
+        assert plugin.submit_access_log({"a": 2}) is False
+    finally:
+        release.set()
+
+    # Once the in-flight entry finishes, its slot is returned.
+    for _ in range(100):
+        if slots.acquire(blocking=False):
+            slots.release()
+            break
+        threading.Event().wait(0.01)
+    assert plugin.submit_access_log({"a": 3}) is True

@@ -34,6 +34,46 @@ _HTTP_CLIENT: Optional[httpx.Client] = None
 _CLIENT_LOCK = threading.Lock()
 _LOG_EXECUTOR = ThreadPoolExecutor(max_workers=10, thread_name_prefix="access_log")
 
+# Access logging is fire-and-forget: if the backend is slow or down, queued
+# entries pile up until the process runs out of memory. Cap the backlog and
+# drop new entries instead — a missing log line is cheaper than an OOM.
+LOG_QUEUE_LIMIT = 1000
+_LOG_SLOTS = threading.BoundedSemaphore(LOG_QUEUE_LIMIT)
+_log_drop_count = 0
+_log_drop_lock = threading.Lock()
+
+
+def submit_access_log(payload: Dict[str, Any]) -> bool:
+    """Queue one access-log entry. Returns False when the backlog is full.
+
+    The semaphore is released by the worker once `send_access_log` returns, so
+    slots track entries that are queued *or* in flight.
+    """
+    global _log_drop_count
+    if not _LOG_SLOTS.acquire(blocking=False):
+        with _log_drop_lock:
+            _log_drop_count += 1
+            # Log every 100th drop: the warning itself must not flood the log
+            # when the backend is down for an extended period.
+            should_warn = _log_drop_count % 100 == 1
+            dropped = _log_drop_count
+        if should_warn:
+            logger.warning(
+                "Access log queue full (%d); dropped %d entries so far",
+                LOG_QUEUE_LIMIT,
+                dropped,
+            )
+        return False
+
+    def _worker() -> None:
+        try:
+            send_access_log(payload)
+        finally:
+            _LOG_SLOTS.release()
+
+    _LOG_EXECUTOR.submit(_worker)
+    return True
+
 
 def get_http_client() -> httpx.Client:
     """Return persistent httpx.Client with connection pooling."""
@@ -223,8 +263,7 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
         path = None if not request.path else request.path.decode()
         method = None if not request.method else request.method.decode()
 
-        _LOG_EXECUTOR.submit(
-            send_access_log,
+        submit_access_log(
             {
                 "tenant_id": None,
                 "auth_credential_id": None,
@@ -236,9 +275,8 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 "proxy_host": None,
                 "proxy_port": None,
                 "response_bytes": len(HTTP_407_RAW),
-            },
+            }
         )
-
     def handle_client_request(self, request: HttpParser) -> Optional[HttpParser]:
         """Forward request to upstream proxy, stripping client auth and adding upstream auth."""
         if not self.upstream:
@@ -322,8 +360,7 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             self._metadata[3], self._metadata[0], self._metadata[1],
             self._metadata[2] or "", addr, port,
         )
-        _LOG_EXECUTOR.submit(
-            send_access_log,
+        submit_access_log(
             {
                 "tenant_id": self._session_meta.get("tenant_id"),
                 "auth_credential_id": self._session_meta.get("credential_id"),
@@ -335,6 +372,6 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
                 "proxy_host": addr,
                 "proxy_port": port,
                 "response_bytes": self.total_size,
-            },
+            }
         )
         return None

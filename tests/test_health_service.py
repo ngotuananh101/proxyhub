@@ -1,10 +1,16 @@
+import ssl
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from app.models.proxy import Proxy
-from app.services.health_service import CheckResult, build_proxy_url, check_proxy
+from app.services.health_service import (
+    CheckResult,
+    build_proxy_url,
+    check_proxy,
+    get_ssl_context,
+)
 
 URL = "https://api.ipify.org"
 TIMEOUT = 6.0
@@ -80,3 +86,27 @@ class TestCheckProxy:
         _, kwargs = mock_client.call_args
         assert kwargs["proxy"] == "http://1.2.3.4:8080"
         assert kwargs["timeout"] == 9.5
+
+    @pytest.mark.anyio
+    async def test_client_reuses_the_process_wide_ssl_context(self):
+        # httpx builds a fresh SSL context (full CA-bundle parse, ~7 ms of
+        # blocking work on the event loop) for every client when verify=True.
+        # Each check needs its own client for a different upstream proxy, so the
+        # context is the shareable part.
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = 200
+        with patch("app.services.health_service.httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                return_value=response
+            )
+            await check_proxy(_proxy(), URL, TIMEOUT)
+            await check_proxy(_proxy(), URL, TIMEOUT)
+
+        first = mock_client.call_args_list[0][1]["verify"]
+        second = mock_client.call_args_list[1][1]["verify"]
+        assert isinstance(first, ssl.SSLContext)
+        assert first is second
+
+
+def test_get_ssl_context_is_cached():
+    assert get_ssl_context() is get_ssl_context()
