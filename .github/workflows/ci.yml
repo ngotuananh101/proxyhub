@@ -13,14 +13,21 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
       - name: Lint
-        run: ruff check app/ tests/ scripts/
+        run: ruff check app/ tests/ scripts/ alembic/
+
+      - name: Verify migrations apply to an empty database
+        env:
+          DB_URL: sqlite:///./ci-migrations.db
+          APP_KEY: ci-only-app-key-not-a-placeholder
+          INTERNAL_API_KEY: ci-only-internal-key
+        run: alembic upgrade head
 
       - name: Run tests with coverage
         run: pytest --cov=app --cov-report=xml --cov-report=term -q

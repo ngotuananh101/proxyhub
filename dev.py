@@ -24,6 +24,7 @@ VENV_DIR = ROOT / "venv"
 VENV_BIN = VENV_DIR / ("Scripts" if IS_WINDOWS else "bin")
 PY = VENV_BIN / ("python.exe" if IS_WINDOWS else "python")
 FRONTEND = ROOT / "frontend"
+SHUTDOWN_GRACE_SECONDS = 10
 
 
 def _venv_script(name: str) -> str:
@@ -81,6 +82,28 @@ def setup(_args: argparse.Namespace) -> None:
     )
 
 
+def _parse_env_value(raw: str) -> str:
+    """Parse the right-hand side of a .env assignment.
+
+    Handles what humans actually write: `export ` prefixes, single or double
+    quotes (which keep `#` literal, even when a comment follows), and a
+    trailing ` # comment` on unquoted values.
+    """
+    value = raw.strip()
+    if value and value[0] in ("'", '"'):
+        quote = value[0]
+        end = value.find(quote, 1)
+        if end != -1:
+            return value[1:end]
+        return value[1:]
+    # A `#` only starts a comment when it follows whitespace, as in dotenv.
+    for i, char in enumerate(value):
+        if char == "#" and (i == 0 or value[i - 1].isspace()):
+            value = value[:i]
+            break
+    return value.strip()
+
+
 def _load_env_file(path: Path) -> dict[str, str]:
     """Minimal KEY=VALUE reader for .env (stdlib only)."""
     values: dict[str, str] = {}
@@ -90,22 +113,35 @@ def _load_env_file(path: Path) -> dict[str, str]:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        key, _, value = line.partition("=")
-        values[key.strip()] = value.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+            if "=" not in line:
+                continue
+        key, _, raw = line.partition("=")
+        values[key.strip()] = _parse_env_value(raw)
     return values
+
+
+def _load_and_merge(path: Path) -> dict[str, str]:
+    """File values under the process environment: the shell always wins.
+
+    Exported variables are explicit operator intent (and how CI configures a
+    run); a stale .env copied by `setup` must not silently override them.
+    """
+    return {**_load_env_file(path), **os.environ}
 
 
 def _python_env() -> dict[str, str]:
     """Environment for the Python children (api/gateway/worker/beat).
 
-    The root .env is layered on top of the ambient environment so local dev
-    picks up APP_KEY, DB_URL, etc. It is deliberately NOT handed to the
-    frontend child: the root .env ships empty VITE_* values (the Docker build
-    values, meaning same-origin), and Vite gives process env precedence over
+    The root .env is layered under the ambient environment so local dev picks
+    up APP_KEY, DB_URL, etc. It is deliberately NOT handed to the frontend
+    child: the root .env ships empty VITE_* values (the Docker build values,
+    meaning same-origin), and Vite gives process env precedence over
     frontend/.env — leaking them would blank out VITE_API_URL and break the
     dashboard under `dev.py run`.
     """
-    return {**os.environ, **_load_env_file(ROOT / ".env")}
+    return _load_and_merge(ROOT / ".env")
 
 
 def _dev_commands() -> list[tuple[str, list[str]]]:
@@ -165,7 +201,7 @@ def _dev_commands() -> list[tuple[str, list[str]]]:
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
-    """Send SIGTERM to the child's whole process group/tree.
+    """Ask the child's whole process group/tree to stop.
 
     npm/sh spawn vite/node and celery spawns prefork children; terminating
     only the direct child leaves those grandchildren alive holding ports.
@@ -173,8 +209,12 @@ def _kill_tree(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
         return
     if IS_WINDOWS:
+        # No /F: give the children a chance to shut down cleanly. A process
+        # that ignores WM_CLOSE is caught by the grace period, after which
+        # _kill_tree_force runs taskkill /F. `taskkill /F` here would kill
+        # workers mid-write.
         subprocess.run(
-            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            ["taskkill", "/T", "/PID", str(proc.pid)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -188,11 +228,16 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 
 def _kill_tree_force(proc: subprocess.Popen) -> None:
-    """SIGKILL the child's whole process group (POSIX only)."""
+    """SIGKILL the child's whole process group."""
     if proc.poll() is not None:
         return
     if IS_WINDOWS:
-        proc.kill()
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
         return
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
@@ -229,16 +274,16 @@ def _first_exit(procs: list[tuple[str, subprocess.Popen]]) -> tuple[str, int] | 
     return None
 
 
-def run_services(_args: argparse.Namespace) -> None:
-    if not PY.exists():
-        sys.exit("No venv found. Run `python dev.py setup` first.")
+def _make_shutdown(procs: list[tuple[str, subprocess.Popen]]):
+    """Build the shutdown handler.
 
-    python_env = _python_env()
-    procs = [(name, _spawn(name, cmd, python_env)) for name, cmd in _dev_commands()]
-
+    `exit_code` is what `dev.py run` exits with: a child dying on its own is a
+    failure (non-zero, so CI and `&&` chains notice), while Ctrl-C/SIGTERM is a
+    normal stop (zero).
+    """
     stopping = False
 
-    def shutdown(*_args: object) -> None:
+    def shutdown(exit_code: int | None = 0) -> None:
         nonlocal stopping
         if stopping:
             return
@@ -248,13 +293,25 @@ def run_services(_args: argparse.Namespace) -> None:
             _kill_tree(proc)
         for _name, proc in procs:
             try:
-                proc.wait(timeout=10)
+                proc.wait(timeout=SHUTDOWN_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
                 _kill_tree_force(proc)
-        sys.exit(0)
+        sys.exit(exit_code or 0)
 
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
+    return shutdown
+
+
+def run_services(_args: argparse.Namespace) -> None:
+    if not PY.exists():
+        sys.exit("No venv found. Run `python dev.py setup` first.")
+
+    python_env = _python_env()
+    procs = [(name, _spawn(name, cmd, python_env)) for name, cmd in _dev_commands()]
+    shutdown = _make_shutdown(procs)
+
+    # The signal handlers receive (signum, frame); the exit code is ours to pick.
+    signal.signal(signal.SIGINT, lambda *_: shutdown(0))
+    signal.signal(signal.SIGTERM, lambda *_: shutdown(0))
 
     try:
         while True:
@@ -262,10 +319,10 @@ def run_services(_args: argparse.Namespace) -> None:
             if exited is not None:
                 name, code = exited
                 print(f"! {name} exited with code {code}; stopping the rest")
-                shutdown()
+                shutdown(code)
             time.sleep(0.5)
     except KeyboardInterrupt:
-        shutdown()
+        shutdown(0)
 
 
 def admin(args: argparse.Namespace) -> None:

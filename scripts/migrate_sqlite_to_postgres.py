@@ -17,7 +17,18 @@ from sqlmodel import SQLModel
 
 import app.models  # noqa: F401  (register tables on SQLModel.metadata)
 
-TABLES = ["users", "appsettings", "proxies", "proxysources", "requestlogs"]
+# Parents before children so foreign keys resolve on PostgreSQL, and so an
+# interrupted run leaves the highest-value rows already copied.
+TABLES = [
+    "tenants",
+    "users",
+    "tenant_memberships",
+    "gateway_credentials",
+    "appsettings",
+    "proxies",
+    "proxysources",
+    "requestlogs",
+]
 BATCH_SIZE = 1000
 
 
@@ -51,11 +62,30 @@ def migrate(sqlite_url: str, pg_url: str) -> None:
                 continue
 
             src_table = src_meta.tables[name]
+            # A pre-tenant SQLite file has the same table without tenant_id (or
+            # without the gateway auth columns); inserting its rows would fail
+            # on the missing columns, so copy only what both sides share.
+            missing = {
+                column.name
+                for column in dst_table.columns
+                if not column.nullable and column.name not in src_table.columns
+            }
+            if missing:
+                print(
+                    f"  {name}: SQLite schema is older (missing {sorted(missing)}), skipped"
+                )
+                continue
+
             with src.connect() as sconn:
                 rows = [_fix_datetimes(dict(r._mapping)) for r in sconn.execute(select(src_table))]
             if not rows:
                 print(f"  {name}: 0 rows")
                 continue
+
+            # Ignore source columns the destination does not have (e.g. a
+            # table the models later dropped a field from).
+            known = set(dst_table.columns.keys())
+            rows = [{k: v for k, v in row.items() if k in known} for row in rows]
 
             for i in range(0, len(rows), BATCH_SIZE):
                 conn.execute(dst_table.insert(), rows[i : i + BATCH_SIZE])

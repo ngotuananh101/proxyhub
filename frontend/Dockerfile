@@ -4,7 +4,9 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci || npm install
+# No `|| npm install` fallback: a lockfile out of sync with package.json should
+# fail the build, not silently resolve a different dependency tree.
+RUN npm ci
 
 COPY . .
 
