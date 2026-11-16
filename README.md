@@ -317,7 +317,7 @@ Go to Dashboard → **`Sources`** to manage free proxy list feeds. Each source i
 
 ### 5. Realtime Dashboard & Request Logs
 
-The Dashboard updates live over a WebSocket (`/ws/events`, authenticated with your JWT):
+The Dashboard updates live over a WebSocket (`/ws/events`, authenticated with your JWT sent as the `Sec-WebSocket-Protocol` header so it never lands in the access log):
 
 - **Stats refresh automatically** — proxy counts on the Proxies page update in real time.
 - **Request logs stream in live** — every request that passes through the Gateway is pushed to the Backend (`POST /internal/logs`) and appears instantly on the **`Logs`** page.

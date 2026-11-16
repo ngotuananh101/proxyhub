@@ -1,5 +1,6 @@
 import asyncio
 import json
+import secrets
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 from starlette.testclient import WebSocketDisconnect
 
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.models.user import User
 from app.services.events import CHANNEL, manager
 
@@ -48,14 +49,29 @@ def token_fixture(engine, client):
     return resp.json()["access_token"]
 
 
+def _make_token(engine) -> str:
+    """Create a user and mint a token directly, bypassing the login endpoint."""
+    with Session(engine) as session:
+        user = User(
+            username=f"user-{secrets.token_hex(4)}",
+            hashed_password=hash_password("pw"),
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return create_access_token({"sub": str(user.id)})
+
+
 class FakeWebSocket:
     def __init__(self, fail: bool = False):
         self.accepted = False
+        self.accepted_subprotocol: str | None = None
         self.sent: list[dict] = []
         self.fail = fail
 
-    async def accept(self):
+    async def accept(self, subprotocol=None):
         self.accepted = True
+        self.accepted_subprotocol = subprotocol
 
     async def send_json(self, message):
         if self.fail:
@@ -70,6 +86,14 @@ class TestConnectionManager:
         await m.connect(ws)
         assert ws.accepted
         assert m.active == [ws]
+
+    async def test_connect_echoes_requested_subprotocol(self):
+        # Browsers abort the handshake if the server picks a subprotocol the
+        # client did not offer, so accept() must echo exactly what was sent.
+        m = type(manager)()
+        ws = FakeWebSocket()
+        await m.connect(ws, subprotocol="jwt-token")
+        assert ws.accepted_subprotocol == "jwt-token"
 
     async def test_disconnect_removes_and_tolerates_unknown(self):
         m = type(manager)()
@@ -228,5 +252,42 @@ class TestWebSocketEndpoint:
 
         with pytest.raises(WebSocketDisconnect) as excinfo:
             with client.websocket_connect(f"/ws/events?token={token}"):
+                pass
+        assert excinfo.value.code == 4401
+
+    def test_websocket_closes_the_session_before_streaming(
+        self, client, engine, monkeypatch
+    ):
+        # A WebSocket handler that holds a Session keeps a pooled connection
+        # checked out for the life of the socket. Assert on Session.close: the
+        # `engine` fixture uses StaticPool, which never reports a checkout count.
+        closed: list[Session] = []
+        real_close = Session.close
+
+        def _record(self):
+            closed.append(self)
+            return real_close(self)
+
+        monkeypatch.setattr(Session, "close", _record)
+        token = _make_token(engine)
+
+        with client.websocket_connect("/ws/events", subprotocols=[token]) as ws:
+            assert closed, "session must be closed before the socket starts streaming"
+            ws.send_text("ping")
+
+    def test_websocket_accepts_token_as_subprotocol(self, client, engine):
+        # The subprotocol is the only way to authenticate without putting the
+        # JWT in the request line, which uvicorn writes to its access log.
+        token = _make_token(engine)
+        with client.websocket_connect("/ws/events", subprotocols=[token]) as ws:
+            assert ws.accepted_subprotocol == token
+
+    def test_query_token_still_accepted_for_older_clients(self, client, token):
+        with client.websocket_connect(f"/ws/events?token={token}"):
+            assert len(manager.active) == 1
+
+    def test_invalid_subprotocol_rejected(self, client):
+        with pytest.raises(WebSocketDisconnect) as excinfo:
+            with client.websocket_connect("/ws/events", subprotocols=["garbage"]):
                 pass
         assert excinfo.value.code == 4401

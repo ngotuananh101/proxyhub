@@ -20,8 +20,13 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.active: list[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, subprotocol: str | None = None) -> None:
+        """Accept a client, echoing `subprotocol` when one was offered.
+
+        Echoing is required whenever the client proposed a subprotocol: browsers
+        abort the handshake if the server accepts without one.
+        """
+        await websocket.accept(subprotocol=subprotocol)
         self.active.append(websocket)
 
     def disconnect(self, websocket: WebSocket) -> None:
