@@ -2,6 +2,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import Index
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
@@ -18,6 +19,10 @@ class Proxy(SQLModel, table=True):
             "tenant_id", "scheme", "host", "port",
             name="uq_proxy_tenant_scheme_host_port",
         ),
+        # The gateway's per-request lookup filters on tenant, status and scheme
+        # and then picks one at random; without this it scans the tenant's
+        # whole pool.
+        Index("ix_proxies_tenant_status_scheme", "tenant_id", "status", "scheme"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
