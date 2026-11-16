@@ -79,8 +79,18 @@ export default function ProxiesPage() {
   const [checking, setChecking] = useState(false)
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
-  const { activeTenant } = useTenant()
-  const tenantId = activeTenant?.id
+  const { activeTenantId: tenantId, isResolvingTenant } = useTenant()
+
+  // A selection only ever refers to rows visible under the current page and
+  // filters. Rather than resetting it from an effect, remember which view it
+  // belongs to and clear it during render when the view changes — the same
+  // "adjust state while rendering" pattern React documents for derived resets.
+  const viewKey = `${tenantId}|${page}|${pageSize}|${statusFilter}|${search}`
+  const [selectionViewKey, setSelectionViewKey] = useState(viewKey)
+  if (selectionViewKey !== viewKey) {
+    setSelectionViewKey(viewKey)
+    setSelected(new Set())
+  }
 
   // Refresh stats and the table live as health check results stream in.
   // Invalidating both queries ensures the active tenant's scoped stats and proxies are refetched.
@@ -123,6 +133,7 @@ export default function ProxiesPage() {
         status: statusFilter === 'all' ? undefined : statusFilter,
         q: search || undefined,
       }),
+    enabled: !isResolvingTenant,
   })
 
   const invalidate = () => {
@@ -131,7 +142,12 @@ export default function ProxiesPage() {
   }
 
   const handleDelete = async (id: number) => {
-    await deleteProxy(id)
+    try {
+      await deleteProxy(id)
+    } catch {
+      toast.add({ type: 'error', title: 'Failed to delete proxy' })
+      return
+    }
     setSelected((prev) => {
       const next = new Set(prev)
       next.delete(id)
@@ -142,7 +158,14 @@ export default function ProxiesPage() {
   }
 
   const handleDeleteSelected = async () => {
-    await deleteManyProxies([...selected])
+    try {
+      await deleteManyProxies([...selected])
+    } catch {
+      // Keep the selection: the user's next attempt should not require
+      // re-picking everything they had chosen.
+      toast.add({ type: 'error', title: 'Failed to delete selected proxies' })
+      return
+    }
     toast.add({ type: 'success', title: `Deleted ${selected.size} proxies` })
     setSelected(new Set())
     invalidate()
@@ -177,13 +200,16 @@ export default function ProxiesPage() {
     })
   }
 
+  // Selection state tracks ids, so "all selected" must be derived from the ids
+  // actually on show — comparing sizes would call a same-count selection on a
+  // different page "all selected".
+  const currentIds = data?.items.map((p) => p.id) ?? []
+  const allSelected = currentIds.length > 0 && currentIds.every((id) => selected.has(id))
+  const someSelected = !allSelected && currentIds.some((id) => selected.has(id))
+
   const toggleSelectAll = () => {
     if (!data) return
-    if (selected.size === data.items.length) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(data.items.map((p) => p.id)))
-    }
+    setSelected(allSelected ? new Set() : new Set(currentIds))
   }
 
   return (
@@ -287,6 +313,8 @@ export default function ProxiesPage() {
           <ProxyTable
             proxies={data.items}
             selected={selected}
+            allSelected={allSelected}
+            someSelected={someSelected}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
             onEdit={setEditingProxy}

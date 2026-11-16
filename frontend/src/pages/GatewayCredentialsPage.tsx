@@ -23,10 +23,13 @@ import {
 import { CreateCredentialDialog } from '@/components/credentials/CreateCredentialDialog'
 import { OneTimePasswordDialog } from '@/components/credentials/OneTimePasswordDialog'
 import { useTenant } from '@/lib/tenant-context'
+import { useTimezone } from '@/hooks/use-timezone'
+import { formatDateTime } from '@/lib/datetime'
 import { toast } from '@/components/ui/toast'
 
 export default function GatewayCredentialsPage() {
-  const { activeTenant } = useTenant()
+  const { activeTenantId } = useTenant()
+  const timezone = useTimezone()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [otpDialog, setOtpDialog] = useState<{ open: boolean; username?: string | null; password?: string | null }>({
@@ -34,7 +37,7 @@ export default function GatewayCredentialsPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['gateway-credentials', activeTenant?.id],
+    queryKey: ['gateway-credentials', activeTenantId],
     queryFn: fetchCredentials,
   })
 
@@ -45,6 +48,9 @@ export default function GatewayCredentialsPage() {
       queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
       toast.add({ type: 'success', title: 'Credential status updated' })
     },
+    onError: () => {
+      toast.add({ type: 'error', title: 'Failed to update credential' })
+    },
   })
 
   const rotateMutation = useMutation({
@@ -53,6 +59,9 @@ export default function GatewayCredentialsPage() {
       queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
       setOtpDialog({ open: true, username: res.username, password: res.generated_password })
     },
+    onError: () => {
+      toast.add({ type: 'error', title: 'Failed to rotate password' })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -60,6 +69,9 @@ export default function GatewayCredentialsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gateway-credentials'] })
       toast.add({ type: 'success', title: 'Credential deleted' })
+    },
+    onError: () => {
+      toast.add({ type: 'error', title: 'Failed to delete credential' })
     },
   })
 
@@ -129,7 +141,7 @@ export default function GatewayCredentialsPage() {
                       />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {cred.last_used_at ? new Date(cred.last_used_at).toLocaleString() : 'Never'}
+                      {cred.last_used_at ? formatDateTime(cred.last_used_at, timezone) : 'Never'}
                     </TableCell>
                     <TableCell className="text-right space-x-1">
                       {cred.auth_mode === 'basic' && (

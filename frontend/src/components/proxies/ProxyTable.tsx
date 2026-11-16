@@ -22,6 +22,10 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'destructive'> = {
 interface Props {
   proxies: ProxyItem[]
   selected: Set<number>
+  /** Whether every row on this page is selected, computed by the parent. */
+  allSelected: boolean
+  /** Whether some — but not all — rows on this page are selected. */
+  someSelected: boolean
   onToggleSelect: (id: number) => void
   onToggleSelectAll: () => void
   onEdit: (proxy: ProxyItem) => void
@@ -31,14 +35,13 @@ interface Props {
 export function ProxyTable({
   proxies,
   selected,
+  allSelected,
+  someSelected,
   onToggleSelect,
   onToggleSelectAll,
   onEdit,
   onDelete,
 }: Props) {
-  const allSelected = proxies.length > 0 && selected.size === proxies.length
-  const someSelected = selected.size > 0 && !allSelected
-
   return (
     <ScrollArea className="sticky-table-header min-h-0 min-w-0 flex-1 bg-card">
       <Table>

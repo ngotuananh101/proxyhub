@@ -10,6 +10,7 @@ import * as tenantsApi from '../api/tenants'
 import * as authApi from '../api/auth'
 import ProxiesPage from '../pages/ProxiesPage'
 import SourcesPage from '../pages/SourcesPage'
+import { fetchProxies } from '../api/proxies'
 
 vi.mock('../api/proxies', () => ({
   fetchProxies: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, size: 20 }),
@@ -84,6 +85,8 @@ describe('tenant-scoped query caches', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.restoreAllMocks()
+    // Module mocks keep their call history across tests by default.
+    vi.mocked(fetchProxies).mockClear()
   })
 
   it('scopes the proxies query by the active tenant', async () => {
@@ -115,6 +118,32 @@ describe('tenant-scoped query caches', () => {
       expect(keysStartingWith(queryClient, 'sources')).toContainEqual(['sources', 2])
     })
     expect(await screen.findByText('No sources yet')).toBeInTheDocument()
+  })
+
+  it('still loads a non-admin page, who never gets a tenant list', async () => {
+    localStorage.setItem('access_token', 'fake-token')
+    // The list endpoint is admin-only, so a member has no stored id to start
+    // from. Waiting for one would leave their pages empty forever.
+    vi.spyOn(authApi, 'getMe').mockResolvedValue({
+      id: 2, username: 'alice', is_admin: false, email: null,
+    })
+    const listSpy = vi.spyOn(tenantsApi, 'listTenants')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          <BrowserRouter>
+            <ProxiesPage />
+          </BrowserRouter>
+        </TenantProvider>
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      expect(vi.mocked(fetchProxies)).toHaveBeenCalled()
+    })
+    expect(listSpy).not.toHaveBeenCalled()
   })
 })
 

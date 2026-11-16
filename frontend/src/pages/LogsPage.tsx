@@ -75,7 +75,7 @@ function formatBytes(n: number | null): string {
 export default function LogsPage() {
   const timezone = useTimezone()
   const queryClient = useQueryClient()
-  const { activeTenant } = useTenant()
+  const { activeTenantId } = useTenant()
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useLocalStorage<StoredLogsFilters>(LOGS_FILTERS_KEY, {
     pageSize: 20,
@@ -140,7 +140,7 @@ export default function LogsPage() {
 
   const { data, isPending } = useQuery({
     // Scoped by tenant so switching never reuses another tenant's cached page.
-    queryKey: ['logs', activeTenant?.id, { page, pageSize, method, search, start, end }],
+    queryKey: ['logs', activeTenantId, { page, pageSize, method, search, start, end }],
     queryFn: () =>
       fetchLogs({
         page,
@@ -165,17 +165,35 @@ export default function LogsPage() {
   // Buffer log events arriving in the same tick and prepend them in one flush,
   // so a burst of requests causes one render instead of one per event.
   const bufferRef = useRef<LogItem[]>([])
-  const flushScheduledRef = useRef(false)
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Invalidations for the filtered/older views are coalesced too: without
+  // this, one refetch per incoming request would hammer the API while the
+  // gateway is busy.
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  // Both timers must be cancelled on unmount: the flush would call setState on
+  // a gone component, and the debounce would refetch a page the user left.
+  useEffect(
+    () => () => {
+      clearTimeout(flushTimerRef.current)
+      clearTimeout(invalidateTimerRef.current)
+    },
+    []
+  )
 
   const activeTenantIdRef = useRef<number | null>(null)
   useEffect(() => {
-    activeTenantIdRef.current = activeTenant?.id ?? null
-  }, [activeTenant])
+    activeTenantIdRef.current = activeTenantId
+  }, [activeTenantId])
 
   useRealtime((event) => {
     if (event.topic !== 'logs') return
     if (!liveRef.current) {
-      queryClient.invalidateQueries({ queryKey: ['logs'] })
+      if (invalidateTimerRef.current) return
+      invalidateTimerRef.current = setTimeout(() => {
+        invalidateTimerRef.current = undefined
+        queryClient.invalidateQueries({ queryKey: ['logs'] })
+      }, 1000)
       return
     }
     const log = event.data as unknown as LogItem
@@ -184,10 +202,9 @@ export default function LogsPage() {
       return
     }
     bufferRef.current.push(log)
-    if (flushScheduledRef.current) return
-    flushScheduledRef.current = true
-    setTimeout(() => {
-      flushScheduledRef.current = false
+    if (flushTimerRef.current) return
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = undefined
       const incoming = bufferRef.current
       bufferRef.current = []
       if (incoming.length === 0) return

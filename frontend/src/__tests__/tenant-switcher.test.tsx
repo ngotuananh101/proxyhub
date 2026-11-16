@@ -14,6 +14,8 @@ describe('TenantSwitcher', () => {
     const setActiveTenant = vi.fn()
     vi.spyOn(tenantLib, 'useTenant').mockReturnValue({
       activeTenant: mockTenants[0],
+      activeTenantId: mockTenants[0].id,
+      isResolvingTenant: false,
       availableTenants: mockTenants,
       setActiveTenant,
       isLoading: false,

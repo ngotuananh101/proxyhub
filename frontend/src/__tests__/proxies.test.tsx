@@ -24,6 +24,8 @@ describe('ProxyTable', () => {
       <ProxyTable
         proxies={mockProxies}
         selected={new Set()}
+        allSelected={false}
+        someSelected={false}
         onToggleSelect={() => {}}
         onToggleSelectAll={() => {}}
         onEdit={() => {}}

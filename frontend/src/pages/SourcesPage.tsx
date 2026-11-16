@@ -43,13 +43,13 @@ function StatusBadge({ source }: { source: SourceItem }) {
 export default function SourcesPage() {
   const queryClient = useQueryClient()
   const timezone = useTimezone()
-  const { activeTenant } = useTenant()
+  const { activeTenantId } = useTenant()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SourceItem | null>(null)
   const [fetchingId, setFetchingId] = useState<number | null>(null)
 
   const { data, isPending } = useQuery({
-    queryKey: ['sources', activeTenant?.id],
+    queryKey: ['sources', activeTenantId],
     queryFn: fetchSources,
   })
 

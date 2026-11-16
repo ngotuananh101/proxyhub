@@ -18,9 +18,9 @@ const cards = [
 ] as const
 
 export function StatCards() {
-  const { activeTenant } = useTenant()
+  const { activeTenantId } = useTenant()
   const { data, isPending } = useQuery({
-    queryKey: ['stats', activeTenant?.id],
+    queryKey: ['stats', activeTenantId],
     queryFn: fetchStats,
   })
 
