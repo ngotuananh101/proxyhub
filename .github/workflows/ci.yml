@@ -24,7 +24,9 @@ jobs:
 
       - name: Verify migrations apply to an empty database
         env:
-          DB_URL: sqlite:///./ci-migrations.db
+          # The URL is assembled from these; a bare DB_URL is ignored now.
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ./ci-migrations.db
           APP_KEY: ci-only-app-key-not-a-placeholder
           INTERNAL_API_KEY: ci-only-internal-key
         run: alembic upgrade head
