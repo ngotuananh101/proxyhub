@@ -221,3 +221,99 @@ def test_no_proxy_attempt_is_logged_with_its_status():
     assert payload["tenant_id"] == 3
     assert payload["auth_credential_id"] == 9
     assert payload["response_bytes"] == 0
+
+
+def test_backend_error_is_not_reported_as_denied():
+    """A 5xx from the backend must not become a 407.
+
+    The credentials were never checked, so telling the client to authenticate
+    sends it chasing a password problem while ProxyHub is simply down.
+    """
+    mock_resp = MagicMock()
+    mock_resp.status_code = 502
+    mock_resp.text = "Bad Gateway"
+
+    with patch("app.gateway.plugin.get_http_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+
+        endpoint, default_target, session_meta = create_session_from_api(
+            session_url="http://test/internal/gateway/session",
+            api_key="secret",
+            client_ip="1.2.3.4",
+            username="u",
+            password="p",
+        )
+    assert endpoint is None
+    assert default_target is None
+    assert session_meta["auth_status"] == "backend_error"
+    assert session_meta["status_code"] == 502
+
+
+def test_unreachable_backend_is_not_reported_as_denied():
+    import httpx
+
+    with patch("app.gateway.plugin.get_http_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.post.side_effect = httpx.ConnectError("refused")
+        mock_get_client.return_value = mock_client
+
+        _, _, session_meta = create_session_from_api(
+            session_url="http://test/internal/gateway/session",
+            api_key="secret",
+            client_ip="1.2.3.4",
+        )
+    assert session_meta["auth_status"] == "backend_error"
+
+
+def test_backend_error_answers_503_not_407():
+    plugin = RotateProxyPlugin.__new__(RotateProxyPlugin)
+    plugin.client = MagicMock()
+    plugin._session_meta = {
+        "tenant_id": None,
+        "credential_id": None,
+        "auth_status": "backend_error",
+    }
+
+    request = MagicMock()
+    request.has_header.return_value = True
+    request.header.return_value = b"example.com:80"
+    request.path = b"/x"
+    request.method = b"GET"
+
+    with patch("app.gateway.plugin.create_session_from_api") as mock_session, patch(
+        "app.gateway.plugin.submit_access_log"
+    ):
+        mock_session.return_value = (
+            None,
+            None,
+            {"auth_status": "backend_error", "tenant_id": None, "credential_id": None},
+        )
+        try:
+            plugin.before_upstream_connection(request)
+        except Exception:
+            pass  # HttpProtocolException tears the connection down
+
+    queued = plugin.client.queue.call_args[0][0]
+    assert b"503" in bytes(queued)
+    assert b"407" not in bytes(queued)
+
+
+def test_submit_access_log_releases_slot_when_executor_rejects(monkeypatch):
+    """If the executor refuses the task, no worker will ever release the slot."""
+    import threading
+
+    import app.gateway.plugin as plugin
+
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(plugin, "_LOG_SLOTS", slots)
+    monkeypatch.setattr(
+        plugin,
+        "_LOG_EXECUTOR",
+        MagicMock(submit=MagicMock(side_effect=RuntimeError("shutdown"))),
+    )
+
+    assert plugin.submit_access_log({"a": 1}) is False
+    # The slot must be back: a refused entry cannot hold it forever.
+    assert slots.acquire(blocking=False) is True

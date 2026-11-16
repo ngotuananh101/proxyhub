@@ -78,7 +78,13 @@ def submit_access_log(payload: Dict[str, Any]) -> bool:
         finally:
             _LOG_SLOTS.release()
 
-    _LOG_EXECUTOR.submit(_worker)
+    try:
+        _LOG_EXECUTOR.submit(_worker)
+    except RuntimeError:
+        # The executor is shut down (interpreter exit): no worker will ever run,
+        # so the slot must be returned here instead of leaking one per request.
+        _LOG_SLOTS.release()
+        return False
     return True
 
 
@@ -128,6 +134,15 @@ def build_407_response_bytes() -> bytes:
     return HTTP_407_RAW
 
 
+def build_error_response_bytes(status: int, reason: bytes) -> bytes:
+    """Minimal raw response for a gateway-side failure (not an auth failure)."""
+    return (
+        b"HTTP/1.1 " + str(status).encode() + b" " + reason + b"\r\n"
+        b"Content-Length: 0\r\n"
+        b"Connection: close\r\n\r\n"
+    )
+
+
 def create_session_from_api(
     session_url: str,
     api_key: str,
@@ -163,6 +178,9 @@ def create_session_from_api(
         meta["status_code"] = resp.status_code
     except Exception as e:
         logger.error("Failed to reach backend session API: %s", e)
+        # Unreachable backend is not a credential verdict: answering 407 would
+        # blame the client for an outage it did not cause.
+        meta["auth_status"] = "backend_error"
         return None, None, meta
 
     if resp.status_code == 401:
@@ -176,6 +194,13 @@ def create_session_from_api(
             # this as "allowed" made the dashboard claim traffic succeeded when
             # the request never left the gateway.
             meta["auth_status"] = "no_proxy"
+        else:
+            # 5xx and other failures are *not* an authentication verdict: the
+            # credentials were never checked, so a 407 would send the client
+            # looking for a password problem that does not exist. Keep the
+            # request refused (there is no proxy to forward through) but report
+            # the backend error.
+            meta["auth_status"] = "backend_error"
         return None, None, meta
 
     data = resp.json()
@@ -247,6 +272,14 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             # Either way the request was never forwarded, so record why instead
             # of leaving a hole in the logs.
             status = self._session_meta.get("auth_status", "no_proxy")
+            if status == "backend_error":
+                # 503, not 407: the client's credentials were never rejected,
+                # ProxyHub simply could not answer. Clients retry a 5xx.
+                self.client.queue(
+                    memoryview(build_error_response_bytes(503, b"ProxyHub backend unavailable"))
+                )
+                self._fire_rejected_log(request, client_ip, status, 0)
+                raise HttpProtocolException("ProxyHub backend unavailable")
             self._fire_rejected_log(request, client_ip, status, 0)
             raise HttpProtocolException("No available proxy from ProxyHub backend")
 
