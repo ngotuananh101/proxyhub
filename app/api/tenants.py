@@ -87,6 +87,10 @@ def add_member(
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if session.get(User, body.user_id) is None:
+        # Without this the row is inserted with a dangling user_id, and the
+        # member silently never sees the tenant (their join finds nothing).
+        raise HTTPException(status_code=404, detail="User not found")
     existing = session.exec(
         select(TenantMembership).where(
             TenantMembership.tenant_id == tenant_id,

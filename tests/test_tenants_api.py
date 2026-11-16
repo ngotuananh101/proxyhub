@@ -194,6 +194,17 @@ def test_add_member_tenant_not_found(client, admin_headers):
     assert resp.status_code == 404
 
 
+def test_add_member_unknown_user_not_found(client, admin_headers):
+    tenant_id = _create_tenant(client, admin_headers)
+    resp = client.post(
+        f"/api/tenants/{tenant_id}/members",
+        json={"user_id": 999_999, "role": "member"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "User not found"
+
+
 def test_add_member_duplicate_conflict(client, admin_headers, engine):
     tenant_id = _create_tenant(client, admin_headers)
     user_id = _create_user(engine, "target_dup")

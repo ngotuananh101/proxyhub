@@ -65,6 +65,9 @@ def get_active_tenant_id(
             return requested
         if memberships:
             return memberships[0].tenant_id
+        # Only an admin with no memberships at all needs the default tenant
+        # materialized; ensure_default_tenant is idempotent, so this is safe
+        # even though it runs inside a request-scoped session.
         return ensure_default_tenant(session).id
 
     if not memberships:

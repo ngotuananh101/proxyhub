@@ -93,3 +93,26 @@ def test_ensure_default_tenant_migrates_null_tenant_rows(session):
     assert p.tenant_id == default_tenant.id
     assert s.tenant_id == default_tenant.id
 
+
+
+def test_ensure_default_tenant_is_quiet_when_nothing_to_migrate(session, engine):
+    # Called once per request by get_active_tenant_id; it must not rewrite
+    # every proxy/source/log row on each call.
+    from sqlalchemy import event
+
+    ensure_default_tenant(session)
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.lstrip().upper())
+
+    event.listen(engine, "before_cursor_execute", _record)
+    try:
+        ensure_default_tenant(session)
+    finally:
+        event.remove(engine, "before_cursor_execute", _record)
+
+    assert not [sql for sql in statements if sql.startswith("UPDATE")]
+    # Exactly one INSERT/UPDATE of the tenant itself; none here.
+    assert not [sql for sql in statements if sql.startswith("INSERT")]
