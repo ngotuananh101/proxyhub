@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearSession } from '@/lib/auth'
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '',
@@ -20,7 +21,7 @@ client.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('access_token')
+      clearSession()
       window.location.href = '/login'
     }
     return Promise.reject(err)

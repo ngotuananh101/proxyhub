@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { LogOutIcon, UserIcon } from 'lucide-react'
 import { getMe } from '@/api/auth'
-import { clearToken } from '@/lib/auth'
+import { clearSession } from '@/lib/auth'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,7 +26,7 @@ export function AppHeader() {
   const initials = (user?.username ?? '?').slice(0, 2).toUpperCase()
 
   const handleLogout = () => {
-    clearToken()
+    clearSession()
     navigate('/login')
   }
 

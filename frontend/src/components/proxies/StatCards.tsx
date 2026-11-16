@@ -8,6 +8,7 @@ import {
 import { fetchStats } from '@/api/proxies'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useTenant } from '@/lib/tenant-context'
 
 const cards = [
   { key: 'total', label: 'Total proxies', icon: GlobeIcon },
@@ -17,7 +18,11 @@ const cards = [
 ] as const
 
 export function StatCards() {
-  const { data, isPending } = useQuery({ queryKey: ['stats'], queryFn: fetchStats })
+  const { activeTenant } = useTenant()
+  const { data, isPending } = useQuery({
+    queryKey: ['stats', activeTenant?.id],
+    queryFn: fetchStats,
+  })
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -75,6 +75,7 @@ function formatBytes(n: number | null): string {
 export default function LogsPage() {
   const timezone = useTimezone()
   const queryClient = useQueryClient()
+  const { activeTenant } = useTenant()
   const [page, setPage] = useState(1)
   const [filters, setFilters] = useLocalStorage<StoredLogsFilters>(LOGS_FILTERS_KEY, {
     pageSize: 20,
@@ -138,7 +139,8 @@ export default function LogsPage() {
   }, [page, method, search, start, end])
 
   const { data, isPending } = useQuery({
-    queryKey: ['logs', { page, pageSize, method, search, start, end }],
+    // Scoped by tenant so switching never reuses another tenant's cached page.
+    queryKey: ['logs', activeTenant?.id, { page, pageSize, method, search, start, end }],
     queryFn: () =>
       fetchLogs({
         page,
@@ -165,7 +167,6 @@ export default function LogsPage() {
   const bufferRef = useRef<LogItem[]>([])
   const flushScheduledRef = useRef(false)
 
-  const { activeTenant } = useTenant()
   const activeTenantIdRef = useRef<number | null>(null)
   useEffect(() => {
     activeTenantIdRef.current = activeTenant?.id ?? null

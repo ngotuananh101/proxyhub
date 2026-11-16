@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldIcon } from 'lucide-react'
 import { login } from '@/api/auth'
-import { setToken } from '@/lib/auth'
+import { clearSession, setToken } from '@/lib/auth'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +29,9 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const data = await login(username, password)
+      // Drop the previous session's tenant before storing the new token, so a
+      // different account never inherits the earlier user's selection.
+      clearSession()
       setToken(data.access_token)
       navigate('/')
     } catch {

@@ -26,6 +26,7 @@ import {
 import { toast } from '@/components/ui/toast'
 import { useTimezone } from '@/hooks/use-timezone'
 import { formatDateTime } from '@/lib/datetime'
+import { useTenant } from '@/lib/tenant-context'
 
 function StatusBadge({ source }: { source: SourceItem }) {
   if (!source.last_status) {
@@ -42,11 +43,15 @@ function StatusBadge({ source }: { source: SourceItem }) {
 export default function SourcesPage() {
   const queryClient = useQueryClient()
   const timezone = useTimezone()
+  const { activeTenant } = useTenant()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SourceItem | null>(null)
   const [fetchingId, setFetchingId] = useState<number | null>(null)
 
-  const { data, isPending } = useQuery({ queryKey: ['sources'], queryFn: fetchSources })
+  const { data, isPending } = useQuery({
+    queryKey: ['sources', activeTenant?.id],
+    queryFn: fetchSources,
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['sources'] })

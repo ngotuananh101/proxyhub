@@ -43,6 +43,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { useRealtime } from '@/hooks/useRealtime'
 import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useTenant } from '@/lib/tenant-context'
 
 const PROXIES_FILTERS_KEY = 'proxyhub-proxies-filters'
 
@@ -78,6 +79,8 @@ export default function ProxiesPage() {
   const [checking, setChecking] = useState(false)
   const [clearing, setClearing] = useState(false)
   const queryClient = useQueryClient()
+  const { activeTenant } = useTenant()
+  const tenantId = activeTenant?.id
 
   // Refresh stats and the table live as health check results stream in.
   // Invalidating both queries ensures the active tenant's scoped stats and proxies are refetched.
@@ -108,7 +111,11 @@ export default function ProxiesPage() {
   }
 
   const { data, isPending } = useQuery({
-    queryKey: ['proxies', page, pageSize, statusFilter, search],
+    // The tenant id belongs in the key: it separates each tenant's cached
+    // pages so a switcher change never shows another tenant's rows. Calls to
+    // invalidateQueries keep the short `['proxies']` prefix, which still
+    // matches every tenant.
+    queryKey: ['proxies', tenantId, page, pageSize, statusFilter, search],
     queryFn: () =>
       fetchProxies({
         page,
