@@ -113,3 +113,98 @@ def test_downgrade_to_base_drops_everything(migrated_url, monkeypatch):
     finally:
         engine.dispose()
     assert remaining == {"alembic_version"}
+
+
+def test_upgrade_on_create_all_database(tmp_path, monkeypatch):
+    """`create_all` then `alembic upgrade head` must work.
+
+    Every deployment so far was bootstrapped by `create_all` (the lifespan
+    calls it, docker-compose never runs alembic), so adopting such a database
+    is the normal case, not an edge case. The chain must add only what is
+    missing instead of failing on the first CREATE TABLE.
+    """
+    url = f"sqlite:///{tmp_path / 'bootstrapped.db'}"
+    monkeypatch.setattr(settings, "DB_URL", url)
+    engine = create_engine(url)
+    SQLModel.metadata.create_all(engine)
+    engine.dispose()
+
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", url)
+    command.upgrade(config, "head")
+
+    engine = create_engine(url)
+    try:
+        migrated = _introspect(engine)
+    finally:
+        engine.dispose()
+    expected = _create_all_schema()
+    assert migrated == expected
+
+
+def test_upgrade_resolves_duplicate_credential_usernames(tmp_path, monkeypatch):
+    """0004 must not abort when two tenants already share a basic username.
+
+    The global-uniqueness check was added after credentials could be created,
+    so a migrated database can hold duplicates. The gateway cannot tell them
+    apart, so the older one keeps the username and the rest are renamed and
+    disabled rather than dropping the whole upgrade.
+    """
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'duplicates.db'}"
+    monkeypatch.setattr(settings, "DB_URL", url)
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", url)
+    command.upgrade(config, "0003")
+
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        tenant_ids = [
+            conn.execute(
+                text(
+                    "INSERT INTO tenants (name, slug, created_at) "
+                    "VALUES (:n, :n, '2026-01-01 00:00:00')"
+                ),
+                {"n": slug},
+            ).lastrowid
+            for slug in ("acme", "globex")
+        ]
+        for tenant_id in tenant_ids:
+            conn.execute(
+                text(
+                    "INSERT INTO gateway_credentials "
+                    "(tenant_id, name, auth_mode, username, password_hash, cidrs, "
+                    "is_active, created_at) VALUES "
+                    "(:t, 'cred', 'basic', 'shared', 'h', NULL, 1, "
+                    "'2026-01-01 00:00:00')"
+                ),
+                {"t": tenant_id},
+            )
+    engine.dispose()
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT tenant_id, username, is_active FROM gateway_credentials "
+                    "ORDER BY id"
+                )
+            ).fetchall()
+            unique_index = conn.execute(
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND name='ix_gateway_credentials_auth_mode_username'"
+                )
+            ).fetchall()
+    finally:
+        engine.dispose()
+
+    assert rows[0] == (1, "shared", 1)
+    assert rows[1][1] == "shared~2"
+    assert rows[1][2] in (0, False)  # SQLite stores the boolean as 0
+    assert unique_index, "the unique index must still be created"
+
