@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.security import hash_password
+from app.models.credential import AuthMode, GatewayCredential
 from app.models.proxy import Proxy, ProxyStatus
+from app.models.tenant import Tenant
 from app.models.user import User
 
 
@@ -29,8 +31,39 @@ def auth_headers_fixture(engine, client):
 INTERNAL_HEADERS = {"X-Internal-Key": "test-internal-key"}
 
 
+def _create_credential(engine, tenant_id: int) -> None:
+    """Seed a basic-auth credential the gateway session endpoint can match."""
+    from app.services.gateway_auth_service import clear_auth_cache
+
+    clear_auth_cache()
+    with Session(engine) as session:
+        session.add(
+            GatewayCredential(
+                tenant_id=tenant_id,
+                name="integration",
+                auth_mode=AuthMode.BASIC,
+                username="integration-user",
+                password_hash=hash_password("integration-pass"),
+                is_active=True,
+            )
+        )
+        session.commit()
+
+
+def _session(client):
+    return client.post(
+        "/internal/gateway/session",
+        json={
+            "username": "integration-user",
+            "password": "integration-pass",
+            "client_ip": "1.1.1.1",
+        },
+        headers=INTERNAL_HEADERS,
+    )
+
+
 def test_full_flow(client, auth_headers, engine):
-    """Import proxies → verify stats → internal API returns a proxy."""
+    """Import proxies → verify stats → gateway session returns a proxy."""
     # Import
     resp = client.post(
         "/api/proxies/import",
@@ -51,20 +84,27 @@ def test_full_flow(client, auth_headers, engine):
             p.status = ProxyStatus.ALIVE
             session.add(p)
         session.commit()
+        tenant_id = session.exec(select(Tenant)).first().id
 
-    # Internal API picks one
-    resp = client.get("/internal/proxies?strategy=random", headers=INTERNAL_HEADERS)
+    _create_credential(engine, tenant_id)
+
+    # The gateway session endpoint picks one
+    resp = _session(client)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["host"] in ("10.0.0.1", "10.0.0.2")
-    assert data["port"] == 8080
+    assert data["proxy"]["host"] in ("10.0.0.1", "10.0.0.2")
+    assert data["proxy"]["port"] == 8080
 
 
-def test_dead_proxy_excluded_from_internal(client, auth_headers, engine):
-    """Mark all proxies dead → internal API returns 404."""
+def test_dead_proxy_excluded_from_session(client, auth_headers, engine):
+    """Mark all proxies dead → the session endpoint returns 404."""
     with Session(engine) as session:
         session.add(Proxy(scheme="http", host="10.0.0.1", port=80, status=ProxyStatus.DEAD))
+        session.add(Tenant(name="Default", slug="default"))
         session.commit()
+        tenant_id = session.exec(select(Tenant)).first().id
 
-    resp = client.get("/internal/proxies?strategy=random", headers=INTERNAL_HEADERS)
+    _create_credential(engine, tenant_id)
+
+    resp = _session(client)
     assert resp.status_code == 404

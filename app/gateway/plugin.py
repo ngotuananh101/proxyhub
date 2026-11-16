@@ -20,13 +20,20 @@ from proxy.http.proxy import HttpProxyBasePlugin
 
 logger = logging.getLogger(__name__)
 
-GATEWAY_API_URL = os.environ.get("GATEWAY_API_URL", "http://localhost:8000/internal/proxies")
+# The gateway talks to two backend endpoints. GATEWAY_SESSION_URL and
+# GATEWAY_LOG_URL are the supported knobs. GATEWAY_API_URL survives only as a
+# deprecated base-URL fallback: deployments that still set it (pointing at the
+# retired /internal/proxies route) keep working because its last path segment
+# is ignored.
+_DEFAULT_GATEWAY_BASE_URL = "http://localhost:8000/internal"
+_legacy_api_url = os.environ.get("GATEWAY_API_URL")
+_gateway_base_url = (
+    _legacy_api_url.rsplit("/", 1)[0] if _legacy_api_url else _DEFAULT_GATEWAY_BASE_URL
+)
 GATEWAY_SESSION_URL = os.environ.get(
-    "GATEWAY_SESSION_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/gateway/session"
+    "GATEWAY_SESSION_URL", _gateway_base_url + "/gateway/session"
 )
-GATEWAY_LOG_URL = os.environ.get(
-    "GATEWAY_LOG_URL", GATEWAY_API_URL.rsplit("/", 1)[0] + "/logs"
-)
+GATEWAY_LOG_URL = os.environ.get("GATEWAY_LOG_URL", _gateway_base_url + "/logs")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 API_TIMEOUT = 1.0
 
@@ -165,7 +172,10 @@ def create_session_from_api(
     if resp.status_code != 200:
         logger.warning("Backend session returned %d: %s", resp.status_code, resp.text)
         if resp.status_code == 404:
-            meta["auth_status"] = "allowed"
+            # Credentials were fine but the tenant has no alive proxy. Recording
+            # this as "allowed" made the dashboard claim traffic succeeded when
+            # the request never left the gateway.
+            meta["auth_status"] = "no_proxy"
         return None, None, meta
 
     data = resp.json()
@@ -229,10 +239,15 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
 
         if self._session_meta.get("auth_status") == "denied":
             self.client.queue(memoryview(build_407_response_bytes()))
-            self._fire_denied_log(request, client_ip)
+            self._fire_rejected_log(request, client_ip, "denied", len(HTTP_407_RAW))
             raise HttpProtocolException("Proxy authentication required")
 
         if self._endpoint is None:
+            # Either the tenant has no alive proxy or the backend is unreachable.
+            # Either way the request was never forwarded, so record why instead
+            # of leaving a hole in the logs.
+            status = self._session_meta.get("auth_status", "no_proxy")
+            self._fire_rejected_log(request, client_ip, status, 0)
             raise HttpProtocolException("No available proxy from ProxyHub backend")
 
         assert self._endpoint.hostname and self._endpoint.port
@@ -253,8 +268,10 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
             )
         return None
 
-    def _fire_denied_log(self, request: HttpParser, client_ip: str) -> None:
-        """Send access log entry for rejected authentication attempt."""
+    def _fire_rejected_log(
+        self, request: HttpParser, client_ip: str, auth_status: str, response_bytes: int
+    ) -> None:
+        """Send an access log entry for a request the gateway refused to forward."""
         host = None
         if request.has_header(b"host"):
             url = Url.from_bytes(request.header(b"host"))
@@ -265,18 +282,19 @@ class RotateProxyPlugin(TcpUpstreamConnectionHandler, HttpProxyBasePlugin):
 
         submit_access_log(
             {
-                "tenant_id": None,
-                "auth_credential_id": None,
-                "auth_status": "denied",
+                "tenant_id": self._session_meta.get("tenant_id"),
+                "auth_credential_id": self._session_meta.get("credential_id"),
+                "auth_status": auth_status,
                 "client_ip": client_ip,
                 "method": method,
                 "host": host,
                 "path": path,
                 "proxy_host": None,
                 "proxy_port": None,
-                "response_bytes": len(HTTP_407_RAW),
+                "response_bytes": response_bytes,
             }
         )
+
     def handle_client_request(self, request: HttpParser) -> Optional[HttpParser]:
         """Forward request to upstream proxy, stripping client auth and adding upstream auth."""
         if not self.upstream:

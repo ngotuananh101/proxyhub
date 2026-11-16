@@ -333,6 +333,8 @@ export default function LogsPage() {
                     <TableCell>
                       {log.auth_status === 'denied' ? (
                         <Badge variant="destructive">denied</Badge>
+                      ) : log.auth_status === 'no_proxy' ? (
+                        <Badge variant="secondary">no proxy</Badge>
                       ) : log.auth_status === 'allowed' ? (
                         <Badge variant="outline" className="border-green-600 text-green-600">
                           allowed

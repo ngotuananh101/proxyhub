@@ -212,7 +212,6 @@ INTERNAL_API_KEY=change_me_to_a_random_internal_api_key
 #--------------------------------------------------
 # Gateway
 #--------------------------------------------------
-GATEWAY_API_URL=http://localhost:8000/internal/proxies
 GATEWAY_SESSION_URL=http://localhost:8000/internal/gateway/session
 GATEWAY_LOG_URL=http://localhost:8000/internal/logs
 GATEWAY_AUTH_CACHE_TTL=60.0
@@ -328,8 +327,8 @@ The Dashboard updates live over a WebSocket (`/ws/events`, authenticated with yo
 
 The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`**. For each incoming request:
 
-1. The plugin calls the FastAPI internal API **`GET /internal/proxies?strategy=random`** (with the `X-Internal-Key` header).
-2. FastAPI queries the database for an **`alive`** proxy and returns its URL.
+1. The plugin calls the FastAPI internal API **`POST /internal/gateway/session`** (with the `X-Internal-Key` header). One round trip authenticates the client and picks a proxy.
+2. FastAPI authenticates the credential, then queries the database for an **`alive`** proxy **in that credential's tenant** and returns its URL.
 3. The plugin establishes the upstream connection to that proxy.
 4. Traffic is forwarded along the path **client → upstream proxy → target**.
 
@@ -359,7 +358,7 @@ The script is idempotent — tables that already contain rows are skipped, so it
 ## 🔒 Security Notes
 
 - **Bind to localhost during development:** In local dev, bind to `127.0.0.1`. In Docker, only expose necessary host ports (`FRONTEND_PORT:80`, `APP_PORT:8000` and `GATEWAY_PORT:8899`), all bound to loopback.
-- **Internal API key:** The `/internal/proxies` endpoint returns proxy URLs including credentials, protected by `INTERNAL_API_KEY` (`X-Internal-Key`).
+- **Internal API key:** The `/internal/gateway/session` endpoint returns proxy URLs including credentials, protected by `INTERNAL_API_KEY` (`X-Internal-Key`).
 - **Change `APP_KEY`:** Always generate a random `APP_KEY`; never use the default value in production.
 
 ---

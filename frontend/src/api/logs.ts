@@ -4,7 +4,7 @@ export interface LogItem {
   id: number
   tenant_id?: number | null
   auth_credential_id?: number | null
-  auth_status?: 'allowed' | 'denied' | null
+  auth_status?: 'allowed' | 'denied' | 'no_proxy' | null
   client_ip: string | null
   method: string | null
   host: string | null

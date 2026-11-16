@@ -57,13 +57,3 @@ class ImportResult(BaseModel):
 
 class DeleteManyRequest(BaseModel):
     ids: list[int]
-
-
-class InternalProxyResponse(BaseModel):
-    id: int
-    scheme: str
-    host: str
-    port: int
-    username: str | None = None
-    password: str | None = None
-    default_target_url: str | None = None

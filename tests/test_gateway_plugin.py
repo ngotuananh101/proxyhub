@@ -178,3 +178,46 @@ def test_access_log_drops_when_queue_is_full(monkeypatch):
             break
         threading.Event().wait(0.01)
     assert plugin.submit_access_log({"a": 3}) is True
+
+
+def test_create_session_from_api_404_marks_no_proxy():
+    # Valid credentials but an empty tenant pool: the request never leaves the
+    # gateway, so it must not be logged as "allowed".
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_resp.text = "No available proxy"
+
+    with patch("app.gateway.plugin.get_http_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_resp
+        mock_get_client.return_value = mock_client
+
+        endpoint, default_target, session_meta = create_session_from_api(
+            session_url="http://test/internal/gateway/session",
+            api_key="secret",
+            client_ip="1.2.3.4",
+            username="u",
+            password="p",
+        )
+    assert endpoint is None
+    assert default_target is None
+    assert session_meta["auth_status"] == "no_proxy"
+
+
+def test_no_proxy_attempt_is_logged_with_its_status():
+    plugin = RotateProxyPlugin.__new__(RotateProxyPlugin)
+    plugin._session_meta = {"tenant_id": 3, "credential_id": 9, "auth_status": "no_proxy"}
+    request = MagicMock()
+    request.has_header.return_value = True
+    request.header.return_value = b"example.com:80"
+    request.path = b"/x"
+    request.method = b"GET"
+
+    with patch("app.gateway.plugin.submit_access_log") as mock_submit:
+        plugin._fire_rejected_log(request, "1.2.3.4", "no_proxy", 0)
+
+    payload = mock_submit.call_args[0][0]
+    assert payload["auth_status"] == "no_proxy"
+    assert payload["tenant_id"] == 3
+    assert payload["auth_credential_id"] == 9
+    assert payload["response_bytes"] == 0

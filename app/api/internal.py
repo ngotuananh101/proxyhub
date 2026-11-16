@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -10,7 +10,6 @@ from app.core.database import get_session
 from app.core.datetime_utils import utc_isoformat
 from app.models.log import RequestLog
 from app.schemas.log import RequestLogResponse
-from app.schemas.proxy import InternalProxyResponse
 from app.services.events import broadcast_sync
 from app.services.gateway_auth_service import authenticate_gateway_request
 from app.services.proxy_service import select_random_proxy
@@ -19,37 +18,6 @@ from app.services.settings_service import get_all as get_settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal", tags=["internal"])
-
-
-# --- Legacy /internal/proxies (deprecated, kept for transition) ---
-
-@router.get("/proxies", response_model=InternalProxyResponse)
-def get_proxy_for_gateway(
-    strategy: str = Query("random"),
-    session: Session = Depends(get_session),
-    x_internal_key: str = Header(""),
-):
-    verify_internal_key(x_internal_key)
-
-    if strategy != "random":
-        raise HTTPException(status_code=400, detail=f"Unsupported strategy: {strategy}")
-
-    proxy = select_random_proxy(session)
-    if proxy is None:
-        raise HTTPException(status_code=404, detail="No available proxy")
-
-    settings_values = get_settings(session)
-    default_target = str(settings_values.get("HEALTH_CHECK_URL", "https://api.ipify.org"))
-
-    return InternalProxyResponse(
-        id=proxy.id,
-        scheme=proxy.scheme,
-        host=proxy.host,
-        port=proxy.port,
-        username=proxy.username,
-        password=proxy.password,
-        default_target_url=default_target,
-    )
 
 
 # --- Combined Gateway Session Endpoint ---
