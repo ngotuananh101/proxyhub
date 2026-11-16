@@ -15,6 +15,7 @@ contract that makes that layering work:
   parks the bundled services behind a profile so they are not started.
 """
 
+import re
 from pathlib import Path
 
 import yaml
@@ -142,3 +143,43 @@ def test_env_example_documents_external_deploy():
     text = ENV_EXAMPLE.read_text(encoding="utf-8")
     assert "DOCKER_QUEUE_BROKER_URL" in text
     assert "docker-compose.external.yml" in text
+
+
+# --- root Dockerfile: compose builds the API-only target ---------------------
+
+
+ROOT_DOCKERFILE = REPO_ROOT / "Dockerfile"
+
+
+def test_root_dockerfile_offers_all_three_stages():
+    targets = set(re.findall(r"^FROM \S+ AS ([\w-]+)", ROOT_DOCKERFILE.read_text(), re.MULTILINE))
+    assert {"dashboard-build", "backend", "allinone"} <= targets
+
+
+def test_compose_app_builds_the_backend_target():
+    # The Dockerfile's default target is `allinone`, which bundles the
+    # dashboard. The compose `app` service must not build that: the SPA is
+    # served by the separate `frontend` container there.
+    app = _load(BASE_COMPOSE)["services"]["app"]
+    assert app["build"]["target"] == "backend"
+
+
+def test_compose_frontend_still_builds_its_own_image():
+    frontend = _load(BASE_COMPOSE)["services"]["frontend"]
+    assert frontend["build"]["context"] == "./frontend"
+
+
+def test_allinone_compose_uses_the_combined_image():
+    compose = _load(REPO_ROOT / "docker-compose.allinone.yml")
+    app = compose["services"]["app"]
+    # A published image, not a local build: the tag is what a deployment pins.
+    assert "ghcr.io" in app["image"]
+    assert "build" not in app
+    env = _env(app)
+    assert env["FRONTEND_DIST"] == "/app/frontend/dist"
+
+
+def test_allinone_compose_publishes_one_app_port_plus_the_gateway():
+    ports = _load(REPO_ROOT / "docker-compose.allinone.yml")["services"]["app"]["ports"]
+    internal = sorted(p.rsplit(":", 1)[1] for p in ports)
+    assert internal == ["8000", "8899"]

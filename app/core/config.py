@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     HEALTH_CHECK_CONCURRENCY: int = 50
     REQUEST_LOG_RETENTION_DAYS: int = 30
     GATEWAY_AUTH_CACHE_TTL: float = 60.0
+    # Directory holding the compiled React dashboard, when the API serves it
+    # itself (the combined image). Empty in the split compose deployment,
+    # where Nginx serves the bundle and only proxies /api and /ws here.
+    FRONTEND_DIST: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

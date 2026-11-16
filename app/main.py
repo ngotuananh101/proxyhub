@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.routing import Mount
 
 from app.api.auth import router as auth_router
 from app.api.events import router as events_router
@@ -17,6 +20,7 @@ from app.api.stats import router as stats_router
 from app.api.tenants import router as tenants_router
 from app.core.config import settings, validate_secrets
 from app.core.database import create_db_and_tables, engine
+from app.core.spa import SPAStaticFiles
 from app.services.events import start_relay, stop_relay
 from app.services.settings_service import seed_settings
 from app.services.source_service import seed_default_sources
@@ -58,6 +62,19 @@ def create_app(db_engine=None):
     app.include_router(internal_router)
     app.include_router(tenants_router)
     app.include_router(gateway_credentials_router)
+
+    # The combined image serves the dashboard from this same process, so mount
+    # it last: a Mount matches every path under it, and the routers above must
+    # keep priority. Unset FRONTEND_DIST (the split compose deployment) leaves
+    # the routes unchanged.
+    if settings.FRONTEND_DIST and Path(settings.FRONTEND_DIST).is_dir():
+        # The bundle's single JS chunk is ~240 kB compressed, but Starlette's
+        # FileResponse sends no `Vary: Accept-Encoding` by itself and this
+        # process replaces the Nginx that would have gzipped it.
+        app.add_middleware(GZipMiddleware, minimum_size=1024)
+        app.router.routes.append(
+            Mount("/", app=SPAStaticFiles(directory=settings.FRONTEND_DIST), name="dashboard")
+        )
 
     if db_engine is not None:
         # Override get_session dependency for testing

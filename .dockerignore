@@ -1,3 +1,8 @@
+# Build context for every image built from the root Dockerfile: `backend` and
+# `dashboard` (the split compose deployment) and the default `allinone` target.
+# The `frontend` directory is included because the dashboard is compiled inside
+# the same build.
+
 .git
 .gitignore
 venv
@@ -6,15 +11,26 @@ __pycache__
 *.pyo
 *.pyd
 .pytest_cache
+.ruff_cache
 .coverage
 htmlcov
 proxyhub.db*
 data
-frontend
 node_modules
 .env
 .env.local
 .claude
+.remember
 tests
 docs
+screenshot
 *.log
+
+# Dependencies and build output: the dashboard stage copies `frontend/` only
+# after its own `npm ci`, so a host node_modules would just shadow it.
+frontend/node_modules
+frontend/dist
+# Local Vite overrides. The build args are the supported way to point the
+# bundle at a different API origin.
+frontend/.env
+frontend/.env.local

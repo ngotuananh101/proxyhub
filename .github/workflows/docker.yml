@@ -1,0 +1,436 @@
+name: Docker
+
+# Builds the combined image from the repository's Dockerfile (`allinone`
+# target: FastAPI + Celery + gateway + the compiled React dashboard, all in one
+# container) and pushes it to GitHub Container Registry.
+#
+# Each architecture is built natively on a runner of that architecture —
+# linux/amd64 on ubuntu-24.04, linux/arm64 on ubuntu-24.04-arm — and the
+# per-platform manifests are merged into one manifest list afterwards. No QEMU:
+# the Python and Node dependencies are compiled/installed for the host they run
+# on, which is also why the two legs run in parallel.
+#
+#   :latest, :main   a push to main
+#   :sha-<7 chars>   every push, and every manual run
+#   :1.2.3, :1.2     tags like v1.2.3
+#   :<branch>        a manual run on a branch (workflow_dispatch)
+#   (nothing)        pull requests: built, never pushed
+#
+# Pull requests build both platforms but skip the push and the merge: the
+# registry login only runs where a push is allowed, so a fork's PR cannot write
+# packages.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # One job per architecture, both running at once on a runner of that
+  # architecture. Each pushes its manifest by digest under an anonymous name;
+  # `merge` later gathers the digests into the tagged manifest list.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels only: the tags are applied once, to the merged manifest list.
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          # Explicit even though it is the default target: the file also holds
+          # the split images, and this workflow ships the combined one.
+          target: allinone
+          # A single platform, matching the runner: no emulation, and the
+          # generated code is the host's own.
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Pushing by digest leaves the image unnamed — `merge` gives it the
+          # tags. On pull requests nothing is exported, so the build only has
+          # to compile and the registry stays untouched.
+          outputs: ${{ github.event_name != 'pull_request' && format('type=image,name={0}/{1},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, env.IMAGE_NAME) || '' }}
+          # Cache scopes are per architecture: both legs run concurrently, and
+          # one shared scope would have them overwrite each other's entries.
+          cache-from: type=gha,scope=build-${{ matrix.arch }}
+          # The cache API is read-only for a fork's PR and writing one there
+          # fails the export, so only pushes and same-repo PRs may write.
+          cache-to: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && format('type=gha,scope=build-{0},mode=max', matrix.arch) || '' }}
+
+      - name: Record the digest
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # `push-by-digest` leaves the image unnamed, so this digest is the
+          # only handle on what was pushed — without it the merge has nothing
+          # to combine.
+          case "$DIGEST" in
+            sha256:*) ;;
+            *) echo "::error::the build returned no digest (${DIGEST:-empty})"; exit 1 ;;
+          esac
+          mkdir -p "${RUNNER_TEMP}/digests"
+          # File name is the architecture, content is the digest: `merge` reads
+          # both back, so it can tell amd64 from arm64 instead of counting files.
+          printf '%s\n' "$DIGEST" > "${RUNNER_TEMP}/digests/${{ matrix.arch }}"
+
+      - name: Upload the digest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+          if-no-files-found: error
+
+  # Gathers the per-platform digests into the tagged multi-arch image.
+  merge:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.merge.outputs.digest }}
+
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create the manifest list
+        id: merge
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          METADATA_FILE: ${{ runner.temp }}/merge.json
+        run: |
+          set -euo pipefail
+          # Each build job wrote `<arch>` → its digest. Both are required, and
+          # the names have to be the two platforms this workflow builds: a
+          # matrix edit that dropped a leg must not publish a half image that
+          # only fails later on the missing architecture.
+          sources=()
+          for arch in amd64 arm64; do
+            file="${RUNNER_TEMP}/digests/${arch}"
+            if [ ! -f "$file" ]; then
+              echo "::error::no digest for ${arch}; found: $(ls "${RUNNER_TEMP}/digests")"
+              exit 1
+            fi
+            digest=$(tr -d '[:space:]' < "$file")
+            case "$digest" in
+              sha256:*) ;;
+              *) echo "::error::bad ${arch} digest: ${digest:-empty}"; exit 1 ;;
+            esac
+            sources+=("${REGISTRY}/${IMAGE_NAME}@${digest}")
+          done
+
+          # On a push this yields the branch name (`main`); on a manual run of
+          # another branch it yields that branch's name.
+          tags=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && tags+=(-t "$tag")
+          done <<< "$TAGS"
+          if [ "${#tags[@]}" -eq 0 ]; then
+            echo "::error::metadata produced no tags"
+            exit 1
+          fi
+
+          docker buildx imagetools create \
+            --metadata-file "$METADATA_FILE" \
+            "${tags[@]}" \
+            "${sources[@]}"
+
+          # Both architectures must be in the result; a merge that silently
+          # kept one leg would otherwise only surface on the failing platform.
+          # `--raw` is the index JSON as stored, so jq decides what is in it
+          # rather than a Go template whose context is action-defined. No jq
+          # early-exit here: the whole document is small and fully consumed.
+          first_tag=${TAGS%%$'\n'*}
+          platforms=$(docker buildx imagetools inspect "$first_tag" --raw \
+            | jq -r '.manifests[].platform | select(. != null) | "\(.os)/\(.architecture)"')
+          echo "published platforms:"
+          echo "$platforms"
+          grep -qx 'linux/amd64' <<< "$platforms"
+          grep -qx 'linux/arm64' <<< "$platforms"
+
+          # `imagetools create` writes the merged descriptor to its metadata
+          # file under `containerimage.descriptor`. Two encodings exist: the
+          # build exporter base64-encodes the descriptor JSON, while
+          # `imagetools create` writes the object itself, so handle both.
+          digest=$(jq -r '
+            ."containerimage.descriptor" as $d
+            | if ($d | type) == "object" then $d.digest
+              elif ($d | type) == "string" then ($d | @base64d | fromjson | .digest)
+              else empty end' "$METADATA_FILE")
+          case "$digest" in
+            sha256:*) ;;
+            *) echo "::error::the merge returned no digest"; exit 1 ;;
+          esac
+
+          # And the digest has to be the one the tag now resolves to, or
+          # `smoke` would pull a platform image instead of the manifest list.
+          published=$(docker buildx imagetools inspect "$first_tag" \
+            --format '{{.Manifest.Digest}}')
+          test "$published" = "$digest" || {
+            echo "::error::$first_tag resolves to $published, merged $digest"
+            exit 1
+          }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  # Starts the image and checks that it actually comes up and serves the
+  # dashboard. Every probe runs inside the container.
+  smoke:
+    needs: [build, merge]
+    # `merge` is skipped on pull requests, and a skipped need would skip this
+    # job too; the check below reduces `needs`'s result to "not cancelled".
+    if: always() && needs.build.result == 'success' && (needs.merge.result == 'success' || needs.merge.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    services:
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushes test exactly what was published: the merged manifest resolved
+      # to this runner's platform.
+      - name: Pull the published image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ needs.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+          docker tag "${REGISTRY}/${IMAGE_NAME}@${DIGEST}" proxyhub:smoke
+
+      - name: Set up Buildx
+        if: github.event_name == 'pull_request'
+        uses: docker/setup-buildx-action@v4.4.1
+
+      # PRs never push, so their image is built here from the same commit; the
+      # amd64 leg's cache makes this a relink, not a full build.
+      - name: Build the PR image
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: allinone
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: proxyhub:smoke
+          cache-from: type=gha,scope=build-amd64
+
+      - name: Start the container
+        run: |
+          docker run -d --name proxyhub-smoke \
+            -e APP_KEY=smoke-test-app-key \
+            -e INTERNAL_API_KEY=smoke-test-internal-key \
+            -e DB_CONNECTION=sqlite \
+            -e DB_DATABASE=/app/data/smoke.db \
+            -e QUEUE_BROKER_URL=redis://host.docker.internal:6379/1 \
+            -e QUEUE_RESULT_BACKEND=redis://host.docker.internal:6379/2 \
+            --add-host host.docker.internal:host-gateway \
+            proxyhub:smoke
+          # Supervisord starts four programs; the API needs a moment to bind.
+          for _ in $(seq 1 30); do
+            if docker exec proxyhub-smoke \
+                curl -fsS http://127.0.0.1:8000/healthz >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy within 30s"
+          docker logs proxyhub-smoke
+          exit 1
+
+      - name: Check the image runs natively
+        run: |
+          set -euo pipefail
+          # No emulation anywhere: the container's architecture has to match
+          # the runner's. A QEMU-built image would report the same, so this
+          # also guards against reintroducing it.
+          image_arch=$(docker image inspect proxyhub:smoke --format '{{.Architecture}}')
+          runner_arch=$(uname -m)
+          case "$runner_arch" in
+            x86_64) runner_arch=amd64 ;;
+            aarch64) runner_arch=arm64 ;;
+          esac
+          test "$image_arch" = "$runner_arch" || {
+            echo "::error::image is $image_arch but the runner is $runner_arch"
+            exit 1
+          }
+          echo "image architecture matches the runner: $image_arch"
+
+      - name: Check the dashboard is served by the API
+        run: |
+          set -euo pipefail
+          in_container() { docker exec proxyhub-smoke "$@"; }
+
+          # The SPA shell comes from the API process in this image. The bodies
+          # are redirected to files and grepped on the runner rather than piped:
+          # `grep -q` exits at the first match, and under `pipefail` the SIGPIPE
+          # that gives curl would fail the step even though the shell was there.
+          in_container curl -fsS http://127.0.0.1:8000/ > "${RUNNER_TEMP}/root.html"
+          grep -qi '<div id="root">' "${RUNNER_TEMP}/root.html"
+          # A client-side route (no file behind it) must serve the same shell.
+          in_container curl -fsS http://127.0.0.1:8000/logs > "${RUNNER_TEMP}/logs.html"
+          grep -qi '<div id="root">' "${RUNNER_TEMP}/logs.html"
+
+          # An unknown API path must stay a JSON 404, not the shell.
+          code=$(in_container curl -s -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:8000/api/does-not-exist)
+          test "$code" = "404"
+
+          # The login endpoint answers (401 for bad credentials, but answered —
+          # not the SPA shell), so the API's own routes survived the mount.
+          code=$(in_container curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"nobody","password":"nothing"}' \
+            http://127.0.0.1:8000/api/auth/login)
+          test "$code" = "401"
+
+          # The hashed bundle is served (and gzipped, since no Nginx is in
+          # front of the API here). Extracted from the saved shell: any early
+          # exit (`head`, `grep -m1`) closes curl's pipe and trips `pipefail`.
+          asset=$(grep -om1 '/assets/index-[^"]*\.js' "${RUNNER_TEMP}/root.html")
+          test -n "$asset"
+          encoding=$(in_container curl -s -o /dev/null -D- \
+            -H 'Accept-Encoding: gzip' "http://127.0.0.1:8000$asset" \
+            | tr -d '\r' | awk 'tolower($1) == "content-encoding:" {print $2}')
+          test "$encoding" = "gzip"
+          echo "dashboard served from the API process: ok"
+
+      - name: Check the helper programs stayed up
+        run: |
+          set -euo pipefail
+          # supervisord starts all four programs. `worker` and `beat` only fail
+          # on missing dependencies at import time, which /healthz cannot see.
+          for program in api worker beat gateway; do
+            state=$(docker exec proxyhub-smoke supervisorctl status "$program" | awk '{print $2}')
+            test "$state" = "RUNNING" || {
+              echo "::error::$program is $state"
+              docker exec proxyhub-smoke supervisorctl status
+              exit 1
+            }
+          done
+          # A RUNNING gateway that never bound would still look healthy to
+          # supervisord; the proxy port has to accept connections.
+          docker exec proxyhub-smoke python -c \
+            "import socket; socket.create_connection(('127.0.0.1', 8899), 5).close()"
+          echo "api, worker, beat and gateway are running"
+
+      - name: Check the worker reached the broker
+        run: |
+          set -euo pipefail
+          # A worker that cannot reach Redis stays RUNNING while retrying; the
+          # log line it prints when it connects is the real signal. The log is
+          # captured first for the same reason as above: `grep -q` closing the
+          # pipe would make `docker logs` die of SIGPIPE and `pipefail` fail.
+          for _ in $(seq 1 30); do
+            docker logs proxyhub-smoke > "${RUNNER_TEMP}/smoke.log" 2>&1 || true
+            if grep -q 'celery@.* ready\.' "${RUNNER_TEMP}/smoke.log"; then
+              echo "worker connected to the broker"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the Celery worker never became ready"
+          docker logs proxyhub-smoke | tail -50
+          exit 1
+
+      - name: Log the container output
+        if: always()
+        run: docker logs proxyhub-smoke 2>&1 | tail -60
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f proxyhub-smoke

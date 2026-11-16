@@ -41,6 +41,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # The Dockerfile's default target is the combined image, which also
+      # carries the dashboard; this service must stay API-only because the
+      # separate `frontend` container serves the SPA.
+      target: backend
     container_name: proxyhub-app
     restart: unless-stopped
     env_file:

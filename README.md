@@ -38,6 +38,7 @@ ProxyHub is an open-source full-stack application for managing, health-checking,
 - [🏗️ System Architecture](#️-system-architecture)
 - [🛠️ Tech Stack](#️-tech-stack)
 - [🐳 Quick Start with Docker Compose (Recommended)](#-quick-start-with-docker-compose-recommended)
+- [🧩 Single-image Deployment](#-single-image-deployment-github-container-registry)
 - [💻 Manual Local Development](#-manual-local-development)
 - [⚙️ Configuration](#️-configuration-environment-variables)
 - [👤 Creating the First Account](#-creating-the-first-account)
@@ -144,6 +145,65 @@ docker compose run --rm app python -m app.cli create-admin --username admin --em
 - **Restart services:** `docker compose restart`
 - **Stop all services:** `docker compose down`
 - **Stop and remove volumes:** `docker compose down -v`
+
+---
+
+## 🧩 Single-image Deployment (GitHub Container Registry)
+
+The split stack above is the developer-friendly setup. For a deployment that
+only needs one container, every push to `main` also publishes a **combined
+image** to GHCR: FastAPI, the Celery worker and beat, the proxy gateway, and
+the compiled React dashboard, all in one image. There is no Nginx in front —
+the API serves the dashboard itself, so `/api`, `/ws` and the UI share one
+origin and one port.
+
+```bash
+docker pull ghcr.io/ngotuananh101/proxyhub:latest
+
+# Only Postgres and Redis are external.
+docker run -d --name proxyhub \
+  -p 8000:8000 -p 8899:8899 \
+  -e APP_KEY=<random> -e INTERNAL_API_KEY=<random> \
+  -e DB_CONNECTION=postgresql -e DB_HOST=<host> -e DB_PASSWORD=<password> \
+  -e QUEUE_BROKER_URL=redis://<host>:6379/1 \
+  -e QUEUE_RESULT_BACKEND=redis://<host>:6379/2 \
+  ghcr.io/ngotuananh101/proxyhub:latest
+```
+
+Then open **`http://localhost:8000`** for the dashboard and API docs, and
+point scraping clients at **`http://localhost:8899`**. Create the first admin
+inside the running container:
+
+```bash
+docker exec proxyhub python -m app.cli create-admin --username admin \
+  --email admin@example.com --password YourStrongPassword
+```
+
+`docker-compose.allinone.yml` wraps the same image with bundled `postgres` and
+`redis` services (reusing the `.env` from the split stack, so `./seed.sh`
+still applies):
+
+```bash
+PROXYHUB_IMAGE=ghcr.io/ngotuananh101/proxyhub:latest \
+  docker compose -f docker-compose.allinone.yml up -d
+```
+
+| Tag | Published when |
+| --- | --- |
+| `latest`, `main` | a push to `main` |
+| `sha-<commit>` | every push, and every manual run |
+| `1.2.3`, `1.2` | a `v1.2.3` tag |
+| — | pull requests build the image and smoke-test it, but never push |
+
+The image is multi-arch (`linux/amd64`, `linux/arm64`). Each architecture is
+built natively on a runner of that architecture (`ubuntu-24.04` and
+`ubuntu-24.04-arm`) and the two per-platform manifests are merged into one
+manifest list afterwards, so no build runs under QEMU. To build it locally:
+
+```bash
+docker build -t proxyhub .                      # the combined image (default)
+docker build --target backend -t proxyhub-api . # only the API/worker/gateway
+```
 
 ---
 
@@ -285,6 +345,10 @@ GATEWAY_AUTH_CACHE_TTL=60.0
 # be set for local development.
 VITE_API_URL=
 VITE_WS_URL=
+# Where the API looks for the compiled dashboard. Set automatically by the
+# combined image (see docker-compose.allinone.yml); leave empty for the split
+# compose stack and local development, where Nginx or Vite serves the SPA.
+# FRONTEND_DIST=/app/frontend/dist
 
 #--------------------------------------------------
 # CORS

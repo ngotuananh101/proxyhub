@@ -1,0 +1,101 @@
+# ProxyHub — the combined image (Dockerfile, default `allinone` target).
+#
+# One container runs everything: FastAPI, the Celery worker and beat, the
+# proxy.py gateway, and the compiled React dashboard, which the API serves
+# itself on port 8000. Only PostgreSQL and Redis are external.
+#
+#   docker run -d --name proxyhub \
+#     -p 8000:8000 -p 8899:8899 \
+#     -e APP_KEY=... -e INTERNAL_API_KEY=... \
+#     -e DB_CONNECTION=postgresql -e DB_HOST=... -e DB_PASSWORD=... \
+#     -e QUEUE_BROKER_URL=redis://... -e QUEUE_RESULT_BACKEND=redis://... \
+#     ghcr.io/ngotuananh101/proxyhub:latest
+#
+# SQLite is fine for a single-node trial: set DB_CONNECTION=sqlite and
+# DB_DATABASE=/app/data/proxyhub.db, and mount a volume at /app/data.
+services:
+  app:
+    image: ${PROXYHUB_IMAGE:-ghcr.io/ngotuananh101/proxyhub:latest}
+    container_name: proxyhub
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # The dashboard is served by the API process itself.
+      FRONTEND_DIST: /app/frontend/dist
+      # Bundled services below; override in .env to point elsewhere.
+      DB_CONNECTION: postgresql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-proxyhub}
+      DB_USERNAME: ${DB_USERNAME:-proxyhub}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ""
+      QUEUE_BROKER_URL: ${DOCKER_QUEUE_BROKER_URL:-redis://redis:6379/1}
+      QUEUE_RESULT_BACKEND: ${DOCKER_QUEUE_RESULT_BACKEND:-redis://redis:6379/2}
+      # Gateway shares this container, so it reaches the API over loopback.
+      GATEWAY_SESSION_URL: http://127.0.0.1:8000/internal/gateway/session
+      GATEWAY_LOG_URL: http://127.0.0.1:8000/internal/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Dashboard and API share one port; the proxy gateway keeps its own.
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+      - "127.0.0.1:${GATEWAY_PORT:-8899}:8899"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - proxyhub-network
+
+  redis:
+    image: redis:8-alpine
+    container_name: proxyhub-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - proxyhub-network
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: proxyhub-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USERNAME:-proxyhub}
+      - "POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in .env}"
+      - POSTGRES_DB=${DB_DATABASE:-proxyhub}
+    volumes:
+      # postgres:18+ expects the mount at /var/lib/postgresql and stores data
+      # in a version-specific subdirectory (enables pg_upgrade).
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-proxyhub} -d $${POSTGRES_DB:-proxyhub}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    networks:
+      - proxyhub-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  proxyhub-network:
+    driver: bridge
