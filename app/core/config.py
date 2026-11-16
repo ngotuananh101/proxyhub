@@ -1,8 +1,25 @@
+from urllib.parse import (
+    parse_qsl,
+    quote_plus,
+    urlencode,
+    urlsplit,
+    urlunsplit,
+)
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DB_URL: str = "sqlite:///./proxyhub.db"
+    # Database connection, assembled into a SQLAlchemy URL by build_db_url().
+    DB_CONNECTION: str = "sqlite"  # "sqlite" | "postgresql" (alias "postgres")
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 5432
+    # For sqlite this is the file path; for postgres the database name.
+    DB_DATABASE: str = "./proxyhub.db"
+    DB_USERNAME: str = "proxyhub"
+    DB_PASSWORD: str = ""
+    DB_SSLMODE: str = ""  # e.g. "require"; omitted from the URL when empty
+
     APP_KEY: str = "change_me"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_TTL: int = 1440
@@ -21,10 +38,70 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
+    @property
+    def redis_broker_url(self) -> str:
+        """QUEUE_BROKER_URL, normalized for TLS (see build_redis_url)."""
+        return build_redis_url(self.QUEUE_BROKER_URL)
+
+    @property
+    def redis_result_backend(self) -> str:
+        """QUEUE_RESULT_BACKEND, normalized for TLS (see build_redis_url)."""
+        return build_redis_url(self.QUEUE_RESULT_BACKEND)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
+
+
+def build_db_url(s: Settings) -> str:
+    """Assemble a SQLAlchemy database URL from the discrete DB_* settings.
+
+    SQLite uses DB_DATABASE as the file path and ignores host/port/credentials.
+    PostgreSQL (also accepts the "postgres" alias) builds a psycopg URL, URL-
+    encoding the credentials so special characters cannot break the URL, and
+    appends ``?sslmode=`` when DB_SSLMODE is set.
+    """
+    connection = s.DB_CONNECTION.lower()
+    if connection == "sqlite":
+        return f"sqlite:///{s.DB_DATABASE}"
+    if connection in ("postgresql", "postgres"):
+        user = quote_plus(s.DB_USERNAME)
+        password = quote_plus(s.DB_PASSWORD)
+        url = (
+            f"postgresql+psycopg://{user}:{password}"
+            f"@{s.DB_HOST}:{s.DB_PORT}/{s.DB_DATABASE}"
+        )
+        if s.DB_SSLMODE:
+            url = f"{url}?sslmode={s.DB_SSLMODE}"
+        return url
+    raise ValueError(f"Unsupported DB_CONNECTION: {s.DB_CONNECTION!r}")
+
+
+def build_redis_url(url: str) -> str:
+    """Normalize a Redis URL for the Celery/redis clients.
+
+    ``rediss://`` (TLS) URLs must carry ``ssl_cert_reqs`` or the Celery redis
+    *backend* raises at startup ("A rediss:// URL must have parameter
+    ssl_cert_reqs..."), while kombu's broker merely warns. Add the parameter
+    (default ``required``) when absent so every client — broker, result
+    backend, pub/sub relay, and the worker lock — sees a consistent URL.
+
+    Plain ``redis://`` URLs and any URL that already sets ``ssl_cert_reqs``
+    are returned unchanged.
+    """
+    parts = urlsplit(url)
+    if parts.scheme != "rediss":
+        return url
+    # Parse the query without re-encoding the rest of the URL.
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    if any(key == "ssl_cert_reqs" for key, _ in query):
+        return url
+    query.append(("ssl_cert_reqs", "required"))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
 
 # Placeholder values that must never reach a running deployment. Any value
 # starting with this prefix counts as unset, so the secrets shipped in

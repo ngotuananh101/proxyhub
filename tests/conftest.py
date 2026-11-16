@@ -4,7 +4,8 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-os.environ.setdefault("DB_URL", "sqlite:///./test.db")
+os.environ.setdefault("DB_CONNECTION", "sqlite")
+os.environ.setdefault("DB_DATABASE", "./test.db")
 os.environ.setdefault("APP_KEY", "test-secret-key-for-proxyhub-0123456789")
 os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key")
 

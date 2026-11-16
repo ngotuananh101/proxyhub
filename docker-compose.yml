@@ -45,13 +45,32 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # A mapping (not a list) so docker-compose.external.yml can replace
+    # individual keys when deploying against external Postgres/Redis.
     environment:
-      - DB_URL=postgresql+psycopg://${DB_USERNAME:-proxyhub}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE:-proxyhub}
-      - QUEUE_BROKER_URL=redis://redis:6379/1
-      - QUEUE_RESULT_BACKEND=redis://redis:6379/2
+      DB_CONNECTION: postgresql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-proxyhub}
+      DB_USERNAME: ${DB_USERNAME:-proxyhub}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # The bundled postgres does not speak TLS; blank any DB_SSLMODE (e.g.
+      # require for Aiven) that .env would otherwise leak into this container.
+      DB_SSLMODE: ""
+      # Default to the bundled redis service. To use a Redis already running
+      # on the host, set DOCKER_QUEUE_* in .env (e.g.
+      # redis://host.docker.internal:6379/1); extra_hosts makes that name
+      # resolve on Linux too. For external Postgres/Redis (e.g. Aiven), layer
+      # docker-compose.external.yml with -f (see README).
+      QUEUE_BROKER_URL: ${DOCKER_QUEUE_BROKER_URL:-redis://redis:6379/1}
+      QUEUE_RESULT_BACKEND: ${DOCKER_QUEUE_RESULT_BACKEND:-redis://redis:6379/2}
       # Gateway shares this container, so it reaches the API over loopback.
-      - GATEWAY_SESSION_URL=http://127.0.0.1:8000/internal/gateway/session
-      - GATEWAY_LOG_URL=http://127.0.0.1:8000/internal/logs
+      GATEWAY_SESSION_URL: http://127.0.0.1:8000/internal/gateway/session
+      GATEWAY_LOG_URL: http://127.0.0.1:8000/internal/logs
+    # Lets the DOCKER_QUEUE_* defaults above resolve a Redis running on the
+    # host, on Linux as well as Docker Desktop.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
       - "127.0.0.1:${GATEWAY_PORT:-8899}:8899"
@@ -79,7 +98,7 @@ services:
     container_name: proxyhub-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     depends_on:
       app:
         condition: service_started

@@ -27,12 +27,23 @@ TABLES = [
 
 @pytest.fixture(name="migrated_url")
 def migrated_url_fixture(tmp_path, monkeypatch):
-    url = f"sqlite:///{tmp_path / 'migrated.db'}"
-    monkeypatch.setattr(settings, "DB_URL", url)
+    url = _point_settings_at(monkeypatch, tmp_path / "migrated.db")
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", url)
     command.upgrade(config, "head")
     return url
+
+
+def _point_settings_at(monkeypatch, path) -> str:
+    """Point alembic (and anything else reading settings) at one SQLite file.
+
+    `env.py` derives its URL from settings via `build_db_url`, which ignores
+    the config's `sqlalchemy.url`, so the discrete DB_* fields are what a test
+    has to override.
+    """
+    monkeypatch.setattr(settings, "DB_CONNECTION", "sqlite")
+    monkeypatch.setattr(settings, "DB_DATABASE", str(path))
+    return f"sqlite:///{path}"
 
 
 def _type_name(column_type) -> str:
@@ -123,8 +134,7 @@ def test_upgrade_on_create_all_database(tmp_path, monkeypatch):
     is the normal case, not an edge case. The chain must add only what is
     missing instead of failing on the first CREATE TABLE.
     """
-    url = f"sqlite:///{tmp_path / 'bootstrapped.db'}"
-    monkeypatch.setattr(settings, "DB_URL", url)
+    url = _point_settings_at(monkeypatch, tmp_path / "bootstrapped.db")
     engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
     engine.dispose()
@@ -152,8 +162,7 @@ def test_upgrade_resolves_duplicate_credential_usernames(tmp_path, monkeypatch):
     """
     from sqlalchemy import text
 
-    url = f"sqlite:///{tmp_path / 'duplicates.db'}"
-    monkeypatch.setattr(settings, "DB_URL", url)
+    url = _point_settings_at(monkeypatch, tmp_path / "duplicates.db")
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", url)
     command.upgrade(config, "0003")

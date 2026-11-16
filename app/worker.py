@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime, timezone
 
@@ -25,10 +26,23 @@ logger = logging.getLogger(__name__)
 # Celery workers/beat never run the FastAPI lifespan, so validate here too.
 validate_secrets(settings)
 
+# Celery reads these env vars ahead of its config (celery/app/utils.py), so a
+# stray one left in a deployment environment would silently override the
+# normalized QUEUE_* URLs below and reintroduce the rediss/ssl_cert_reqs
+# crash. Strip them so app settings always win.
+for _legacy in (
+    "CELERY_BROKER_URL",
+    "CELERY_BROKER_READ_URL",
+    "CELERY_BROKER_WRITE_URL",
+    "CELERY_RESULT_BACKEND",
+):
+    if os.environ.pop(_legacy, None) is not None:
+        logger.warning("Ignoring legacy env var %s; using QUEUE_* settings", _legacy)
+
 celery_app = Celery(
     "proxyhub",
-    broker=settings.QUEUE_BROKER_URL,
-    backend=settings.QUEUE_RESULT_BACKEND,
+    broker=settings.redis_broker_url,
+    backend=settings.redis_result_backend,
 )
 
 # Fixed 60s tick: the tasks themselves gate on intervals stored in the DB
@@ -74,7 +88,7 @@ LOCK_TIMEOUT = 900.0
 
 def _get_lock_client() -> Redis:
     """Indirection so tests can swap in a fake Redis client."""
-    return Redis.from_url(settings.QUEUE_BROKER_URL)
+    return Redis.from_url(settings.redis_broker_url)
 
 
 def _acquire_lock(name: str):

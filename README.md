@@ -71,7 +71,7 @@ flowchart LR
     G -->|Forward traffic| T[Target Website]
     G -->|Get alive proxy| B[FastAPI Backend<br/>:8000]
 
-    R[React Dashboard<br/>:3000 / :5173] -->|Nginx Reverse Proxy / REST / WS| B
+    R[React Dashboard<br/>:5173] -->|Nginx Reverse Proxy / REST / WS| B
     B -->|CRUD / Logs| D[(PostgreSQL)]
 
     CB[Celery Beat] -->|Tick every 60s| CW[Celery Worker]
@@ -86,9 +86,9 @@ flowchart LR
 
 | Service              | Host Port | Internal Container Port | Notes                                                                |
 | -------------------- | --------- | ----------------------- | -------------------------------------------------------------------- |
-| Frontend Dashboard   | 3000      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS                         |
+| Frontend Dashboard   | 5173      | 80 (Nginx)              | React SPA + Nginx Reverse Proxy for API & WS; published on `127.0.0.1:${FRONTEND_PORT:-5173}` |
 | FastAPI Backend      | 8000 (loopback) | 8000              | Published on `127.0.0.1:${APP_PORT:-8000}`; also proxied via Nginx at `/api`, `/docs` |
-| proxy.py Gateway     | 8899      | 8899                    | Rotating proxy port for scrapers/clients; shares the `app` container |
+| proxy.py Gateway     | 8899      | 8899                    | Published on `127.0.0.1:${GATEWAY_PORT:-8899}`; rotating proxy port for scrapers/clients |
 | PostgreSQL           | Internal  | 5432                    | Primary database (persistent volume)                                 |
 | Redis                | Internal  | 6379                    | Broker/backend for Celery                                            |
 
@@ -103,20 +103,27 @@ Docker Compose runs all 4 services (`app`, `frontend`, `postgres`, `redis`) with
 ```bash
 git clone https://github.com/ngotuananh101/proxyhub.git
 cd proxyhub
-cp .env.example .env
+./seed.sh
 ```
 
-Edit `.env` to set your own secure secrets:
-```env
-APP_KEY=your_generated_secret_key
-INTERNAL_API_KEY=your_internal_gateway_key
-```
+`seed.sh` copies `.env.example` to `.env` and fills in freshly generated values for `APP_KEY`, `INTERNAL_API_KEY`, and `DB_PASSWORD`. It refuses to overwrite an existing `.env` unless you pass `--force`.
+
+Then review `.env` and adjust the database host/credentials and ports for your deployment:
 
 ### 2. Start all services
 
 ```bash
 docker compose up -d --build
 ```
+
+> **Using external PostgreSQL/Redis (e.g. Aiven)?** The bundled `postgres` and
+> `redis` services are started by default. To point at managed services
+> instead, set the `DB_*` values and the `DOCKER_QUEUE_*` URLs in `.env`, then
+> layer the external overlay (see [External PostgreSQL & Redis](#-external-postgresql--redis)):
+>
+> ```bash
+> docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
+> ```
 
 ### 3. Create your initial Admin account
 
@@ -126,8 +133,8 @@ docker compose run --rm app python -m app.cli create-admin --username admin --em
 
 ### 4. Access ProxyHub
 
-- **Dashboard & API:** Open **`http://localhost:3000`** in your browser and log in with your admin credentials.
-- **API Documentation:** **`http://localhost:3000/docs`**
+- **Dashboard & API:** Open **`http://localhost:5173`** in your browser and log in with your admin credentials.
+- **API Documentation:** **`http://localhost:5173/docs`**
 - **Rotating Proxy Gateway:** Connect scraping clients to **`http://localhost:8899`**.
 
 ### Useful Docker Compose commands
@@ -137,6 +144,32 @@ docker compose run --rm app python -m app.cli create-admin --username admin --em
 - **Restart services:** `docker compose restart`
 - **Stop all services:** `docker compose down`
 - **Stop and remove volumes:** `docker compose down -v`
+
+---
+
+## ☁️ External PostgreSQL & Redis
+
+By default `docker compose up` runs the bundled `postgres` and `redis`
+services. To deploy against managed services (e.g. Aiven) instead, layer
+`docker-compose.external.yml` on top of the base file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
+```
+
+The overlay reads the DB settings from `.env` (the base file hard-codes them to
+the bundled `postgres` service), points Celery at the external Redis, and skips
+the bundled `postgres`/`redis` services. It requires **Docker Compose ≥ 2.24**
+(for the `!reset` tag).
+
+| Scenario | Command | `.env` values |
+| --- | --- | --- |
+| All bundled (default) | `docker compose up -d --build` | leave `DB_*`/`DOCKER_QUEUE_*` at defaults |
+| Redis on host / external, bundled Postgres | `docker compose up -d --build` | set `DOCKER_QUEUE_BROKER_URL`, `DOCKER_QUEUE_RESULT_BACKEND` |
+| External Postgres + Redis (Aiven) | `docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build` | set `DB_*` **and** `DOCKER_QUEUE_*` |
+
+`docker-compose.external.yml` fails fast if `DB_HOST`, `DB_PASSWORD`,
+`DOCKER_QUEUE_BROKER_URL`, or `DOCKER_QUEUE_RESULT_BACKEND` are unset.
 
 ---
 
@@ -179,28 +212,54 @@ The **`.env`** file contains configuration values:
 # ProxyHub
 ############################################
 
-APP_NAME=ProxyHub
-APP_ENV=local
+#--------------------------------------------------
+# Application
+#--------------------------------------------------
 APP_KEY=change_me_to_a_random_secure_secret_key
-APP_PORT=8000
 
 #--------------------------------------------------
-# Database (PostgreSQL)
+# Service ports
 #--------------------------------------------------
-# Local:  postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/proxyhub
-# Docker: auto-configured in docker-compose.yml from DB_USERNAME/DB_PASSWORD/DB_DATABASE
-# SQLite still works for single-process setups: sqlite:///./proxyhub.db
+# Host ports used by docker-compose. `python dev.py run` binds the API, gateway
+# and Vite dev server to these same ports, and derives the loopback URLs
+# (GATEWAY_*, VITE_*) from APP_PORT.
+APP_PORT=8000
+GATEWAY_PORT=8899
+FRONTEND_PORT=5173
+
+#--------------------------------------------------
+# Database
+#--------------------------------------------------
+# The SQLAlchemy URL is assembled from these variables (see build_db_url in
+# app/core/config.py) — there is no single DB_URL to set.
+# SQLite: set DB_CONNECTION=sqlite and DB_DATABASE to the file path.
+# Docker: docker-compose.yml points these at the bundled `postgres` service.
+# To use an external PostgreSQL (e.g. Aiven) instead, set the values below and
+# deploy with the external overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.external.yml up -d --build
 DB_CONNECTION=postgresql
-DB_URL=postgresql+psycopg://proxyhub:proxyhub@127.0.0.1:5432/proxyhub
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=proxyhub
 DB_USERNAME=proxyhub
 DB_PASSWORD=change_me_to_a_strong_password
-DB_DATABASE=proxyhub
+# Uncomment for managed Postgres that requires TLS (e.g. Aiven).
+# DB_SSLMODE=require
 
 #--------------------------------------------------
 # Queue (Celery / Redis)
 #--------------------------------------------------
+# Used by `python dev.py run` and by the app outside Docker.
 QUEUE_BROKER_URL=redis://127.0.0.1:6379/1
 QUEUE_RESULT_BACKEND=redis://127.0.0.1:6379/2
+# Docker only. Leave unset to use the bundled `redis` service. Set these to
+# point at a Redis already running on the host (the name resolves via the
+# extra_hosts entry in docker-compose.yml), or at an external Redis (e.g.
+# Aiven) — required when deploying with docker-compose.external.yml.
+# For TLS Redis use rediss://; ssl_cert_reqs=required is added automatically
+# when absent (override by appending ?ssl_cert_reqs=none to opt out of verify).
+# DOCKER_QUEUE_BROKER_URL=rediss://default:password@your-redis.aivencloud.com:13601/1
+# DOCKER_QUEUE_RESULT_BACKEND=rediss://default:password@your-redis.aivencloud.com:13601/2
 
 #--------------------------------------------------
 # Auth (JWT)
@@ -212,10 +271,26 @@ INTERNAL_API_KEY=change_me_to_a_random_internal_api_key
 #--------------------------------------------------
 # Gateway
 #--------------------------------------------------
+# Internal API URLs the gateway calls. Under `python dev.py run` these are
+# derived from APP_PORT, so they need not be set for local development.
 GATEWAY_SESSION_URL=http://localhost:8000/internal/gateway/session
 GATEWAY_LOG_URL=http://localhost:8000/internal/logs
 GATEWAY_AUTH_CACHE_TTL=60.0
-GATEWAY_PORT=8899
+
+#--------------------------------------------------
+# Frontend (Vite: dev server + Docker build args)
+#--------------------------------------------------
+# Leave empty in Docker to use same-origin (Nginx proxies /api and /ws).
+# Under `python dev.py run` these are derived from APP_PORT, so they need not
+# be set for local development.
+VITE_API_URL=
+VITE_WS_URL=
+
+#--------------------------------------------------
+# CORS
+#--------------------------------------------------
+# `python dev.py run` appends the FRONTEND_PORT origin automatically.
+CORS_ORIGINS=http://localhost:5173,http://localhost
 
 #--------------------------------------------------
 # Runtime settings (seeded to the DB on first boot, editable in the dashboard)
@@ -225,20 +300,6 @@ HEALTH_CHECK_TIMEOUT=6
 HEALTH_CHECK_INTERVAL=300
 HEALTH_CHECK_CONCURRENCY=50
 REQUEST_LOG_RETENTION_DAYS=30
-
-#--------------------------------------------------
-# CORS
-#--------------------------------------------------
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost
-
-#--------------------------------------------------
-# Frontend (Vite: dev server + Docker build args)
-#--------------------------------------------------
-# Leave empty in Docker to use same-origin (Nginx proxies /api and /ws).
-VITE_API_URL=
-VITE_WS_URL=
-# Host port for the dashboard container.
-FRONTEND_PORT=3000
 ```
 
 ### Renamed variables (breaking change)
@@ -248,7 +309,7 @@ FRONTEND_PORT=3000
 | `SECRET_KEY` | `APP_KEY` |
 | `ALGORITHM` | `JWT_ALGORITHM` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `JWT_ACCESS_TOKEN_TTL` |
-| `DATABASE_URL` | `DB_URL` |
+| `DATABASE_URL` | `DB_CONNECTION` + `DB_HOST` + `DB_PORT` + `DB_DATABASE` + `DB_USERNAME` + `DB_PASSWORD` (optional `DB_SSLMODE`) |
 | `POSTGRES_USER` | `DB_USERNAME` |
 | `POSTGRES_PASSWORD` | `DB_PASSWORD` |
 | `POSTGRES_DB` | `DB_DATABASE` |
@@ -339,7 +400,7 @@ The **`RotateProxyPlugin`** plugin extends `proxy.py`'s **`HttpProxyBasePlugin`*
 If you have an existing `proxyhub.db` from a previous SQLite setup, a one-shot script copies all data (users, settings, proxies, sources, request logs) into PostgreSQL:
 
 1. Stop the app so the SQLite file is not being written to.
-2. Point `DB_URL` in `.env` at your PostgreSQL database.
+2. Set the `DB_*` variables in `.env` (`DB_CONNECTION=postgresql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) to point at your PostgreSQL database.
 3. Run the migration:
 
 ```bash
@@ -351,7 +412,7 @@ docker compose run --rm -v $(pwd)/proxyhub.db:/tmp/proxyhub.db \
   app python -m scripts.migrate_sqlite_to_postgres /tmp/proxyhub.db
 ```
 
-The script is idempotent — tables that already contain rows are skipped, so it is safe to re-run. The original `proxyhub.db` is only read, never modified; you can switch back at any time by setting `DB_URL` to the SQLite path.
+The script is idempotent — tables that already contain rows are skipped, so it is safe to re-run. The original `proxyhub.db` is only read, never modified; you can switch back at any time by setting `DB_CONNECTION=sqlite` and `DB_DATABASE` to the SQLite path.
 
 ---
 
@@ -369,8 +430,9 @@ The script is idempotent — tables that already contain rows are skipped, so it
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Celery worker crashes on Windows              | Celery does not support Windows with the default pool. Use Docker Compose (recommended) or `--pool=threads`.               |
 | `ConnectionError: redis://127.0.0.1:6379`     | Redis is not running. Start Redis (`redis-server`) or verify container `proxyhub-redis` is running.                         |
-| `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or `DB_URL` is wrong. In Docker, verify container `proxyhub-postgres` is healthy.                 |
-| Port 3000 or 8899 already in use              | Port conflict on host. Change `FRONTEND_PORT` or `GATEWAY_PORT` in `.env`.                                                   |
+| `ValueError: A rediss:// URL must have parameter ssl_cert_reqs` (worker/beat) | Fixed in code: `rediss://` URLs get `ssl_cert_reqs=required` automatically. If you still see it, ensure the URL is not overridden somewhere without the parameter. |
+| `OperationalError: connection refused` (Postgres) | PostgreSQL is not running or the `DB_*` variables are wrong. In Docker, verify container `proxyhub-postgres` is healthy.        |
+| Port 5173 or 8899 already in use              | Port conflict on host. Change `FRONTEND_PORT` or `GATEWAY_PORT` in `.env`.                                                   |
 | `database is locked` (SQLite only)            | Only relevant if you kept SQLite. FastAPI and Celery write concurrently; WAL mode and `busy_timeout` are enabled by default. Switching to PostgreSQL removes this class of error. |
 | Gateway errors but Dashboard still shows proxies alive | Health check hasn't completed a cycle yet. Check app logs (`docker compose logs -f app`) or click "Check now".             |
 
